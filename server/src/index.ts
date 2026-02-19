@@ -5,7 +5,9 @@ import dotenv from 'dotenv';
 
 import { runMigrations } from './db/migrate';
 import { seedDatabase } from './db/seed';
+import { resolveTeamId } from './middleware/resolveTeam';
 import healthRouter from './routes/health';
+import teamsRouter from './routes/teams';
 import metricsRouter from './routes/metrics';
 import eventsRouter from './routes/events';
 import incidentsRouter from './routes/incidents';
@@ -26,6 +28,10 @@ app.use(express.json());
 
 // --------------- Routes ---------------
 app.use('/api/health', healthRouter);
+app.use('/api/teams', teamsRouter);
+
+// Team-scoped routes — resolve slug to UUID first
+app.use('/api/teams/:teamId', resolveTeamId);
 app.use('/api/teams', metricsRouter);
 app.use('/api/teams', eventsRouter);
 app.use('/api/teams', incidentsRouter);
@@ -37,10 +43,7 @@ app.use(errorHandler);
 // --------------- Start ---------------
 async function start() {
   try {
-    // Run database migrations
     await runMigrations();
-
-    // Seed with demo data
     await seedDatabase();
 
     server.listen(PORT, () => {
@@ -50,9 +53,10 @@ async function start() {
   │   🟢 PulseBoard Server Running     │
   │   http://localhost:${PORT}            │
   │                                     │
-  │   Health: /api/health               │
-  │   Metrics: /api/teams/:id/metrics   │
-  │   Events: /api/teams/:id/events     │
+  │   Health:    /api/health            │
+  │   Teams:     /api/teams             │
+  │   Metrics:   /api/teams/:id/metrics │
+  │   Events:    /api/teams/:id/events  │
   │   Incidents: /api/teams/:id/incidents│
   │                                     │
   └─────────────────────────────────────┘

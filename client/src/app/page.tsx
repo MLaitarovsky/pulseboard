@@ -1,9 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Rocket, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  Rocket,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Users,
+} from 'lucide-react';
+import EventsFeed from '@/components/EventsFeed';
 
-// Demo team ID — will be dynamic later
 const TEAM_ID = 'acme-eng';
 
 interface MetricsSnapshot {
@@ -12,6 +20,12 @@ interface MetricsSnapshot {
   deployFrequency: number;
   responseTime: number;
   updatedAt: string;
+}
+
+interface IncidentSummary {
+  open: number;
+  investigating: number;
+  critical: number;
 }
 
 function MetricCard({
@@ -49,7 +63,9 @@ function MetricCard({
         <span className="text-xs text-text-dim uppercase tracking-wider font-mono">
           {label}
         </span>
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorClasses[color]}`}>
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorClasses[color]}`}
+        >
           <Icon className="w-4 h-4" />
         </div>
       </div>
@@ -75,45 +91,77 @@ function MetricCard({
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
+  const [incidents, setIncidents] = useState<IncidentSummary>({
+    open: 0,
+    investigating: 0,
+    critical: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchMetrics() {
+    async function fetchData() {
       try {
-        // Fetch from the API (proxied through Next.js rewrites)
-        const res = await fetch(`/api/teams/${TEAM_ID}/metrics`);
-        if (res.ok) {
-          const data = await res.json();
+        // Fetch metrics
+        const metricsRes = await fetch(`/api/teams/${TEAM_ID}/metrics`);
+        if (metricsRes.ok) {
+          const data = await metricsRes.json();
           setMetrics(data);
         }
+
+        // Fetch open incidents for the count card
+        const incidentsRes = await fetch(
+          `/api/teams/${TEAM_ID}/incidents`
+        );
+        if (incidentsRes.ok) {
+          const data = await incidentsRes.json();
+          const open = data.filter(
+            (i: any) => i.status !== 'resolved'
+          ).length;
+          const investigating = data.filter(
+            (i: any) => i.status === 'investigating'
+          ).length;
+          const critical = data.filter(
+            (i: any) =>
+              i.severity === 'critical' && i.status !== 'resolved'
+          ).length;
+          setIncidents({ open, investigating, critical });
+        }
       } catch (err) {
-        console.error('Failed to fetch metrics:', err);
+        console.error('Failed to fetch dashboard data:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchMetrics();
+    fetchData();
   }, []);
 
   return (
     <div>
       {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
-          Dashboard
-        </h1>
-        <p className="text-sm text-text-dim mt-1">
-          Real-time overview of your system health and activity
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
+            Dashboard
+          </h1>
+          <p className="text-sm text-text-dim mt-1">
+            Real-time overview of your system health and activity
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-text-dim bg-surface border border-border rounded-lg px-3 py-2">
+          <Users className="w-3.5 h-3.5" />
+          <span>1 viewer</span>
+        </div>
       </div>
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {loading ? (
-          // Skeleton loaders
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-surface border border-border rounded-xl p-5">
+            <div
+              key={i}
+              className="bg-surface border border-border rounded-xl p-5"
+            >
               <div className="skeleton h-4 w-20 mb-4" />
               <div className="skeleton h-8 w-24" />
             </div>
@@ -155,10 +203,10 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Placeholder sections for next phases */}
+      {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Timeline Chart Placeholder */}
-        <div className="lg:col-span-2 bg-surface border border-border rounded-xl p-5 min-h-[350px] flex items-center justify-center">
+        <div className="lg:col-span-2 bg-surface border border-border rounded-xl p-5 min-h-[420px] flex items-center justify-center">
           <div className="text-center text-text-dim">
             <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">D3.js Timeline</p>
@@ -166,15 +214,56 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Events Feed Placeholder */}
-        <div className="bg-surface border border-border rounded-xl p-5 min-h-[350px] flex items-center justify-center">
-          <div className="text-center text-text-dim">
-            <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium">Live Events Feed</p>
-            <p className="text-xs mt-1 opacity-60">Phase 2.3 — Next up</p>
+        {/* Events Feed */}
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">
+                Recent Events
+              </h2>
+              <p className="text-[10px] text-text-dim font-mono uppercase tracking-wider mt-0.5">
+                Live feed
+              </p>
+            </div>
+            <div className="w-2 h-2 rounded-full bg-accent-green pulse-green" />
+          </div>
+          <div className="max-h-[360px] overflow-y-auto">
+            <EventsFeed limit={20} />
           </div>
         </div>
       </div>
+
+      {/* Active Incidents Banner */}
+      {!loading && incidents.open > 0 && (
+        <div className="mt-4 bg-accent-red/5 border border-accent-red/20 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent-red/10 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4 text-accent-red" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-text-primary">
+                {incidents.open} active incident{incidents.open !== 1 ? 's' : ''}
+                {incidents.critical > 0 && (
+                  <span className="ml-2 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-accent-red/15 text-accent-red">
+                    {incidents.critical} critical
+                  </span>
+                )}
+              </p>
+              <p className="text-xs text-text-dim mt-0.5">
+                {incidents.investigating > 0
+                  ? `${incidents.investigating} under investigation`
+                  : 'Awaiting acknowledgment'}
+              </p>
+            </div>
+          </div>
+          <a
+            href="/incidents"
+            className="text-xs text-accent-red hover:underline font-medium"
+          >
+            View all →
+          </a>
+        </div>
+      )}
     </div>
   );
 }
