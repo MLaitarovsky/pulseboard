@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --color-green: #00e5a0;
+  --color-purple: #6c5ce7;
+  --color-red: #ff6b6b;
+  --color-yellow: #ffd93d;
+  --color-blue: #00b4d8;
+}
+
+body {
+  background: #0a0a12;
+  color: #e4e4ef;
+}
+
+/* Custom scrollbar for dashboard feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111119;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a3d;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a5d;
+}
+
+/* Skeleton loading animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #1a1a26 25%, #222233 50%, #1a1a26 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Status indicator pulse */
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(0, 229, 160, 0); }
+}
+
+.pulse-green {
+  animation: pulse-green 2s ease-in-out infinite;
+}
