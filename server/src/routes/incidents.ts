@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db/pool';
+import { resolveTeamId } from '../utils/resolveTeam';
 
 // Valid state transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -15,7 +16,9 @@ const router = Router();
 // GET /api/teams/:teamId/incidents — list incidents
 router.get('/:teamId/incidents', async (req: Request, res: Response) => {
   try {
-    const { teamId } = req.params;
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
+
     const { status, severity } = req.query;
 
     let query = `SELECT * FROM incidents WHERE team_id = $1`;
@@ -62,10 +65,11 @@ router.get('/:teamId/incidents/:id', async (req: Request, res: Response) => {
 // POST /api/teams/:teamId/incidents — create incident
 router.post('/:teamId/incidents', async (req: Request, res: Response) => {
   try {
-    const { teamId } = req.params;
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
+
     const { title, description, severity, createdBy } = req.body;
 
-    // Create the incident
     const result = await pool.query(`
       INSERT INTO incidents (team_id, title, description, severity, status, created_by)
       VALUES ($1, $2, $3, $4, 'open', $5)
@@ -111,7 +115,6 @@ router.patch('/:teamId/incidents/:id', async (req: Request, res: Response) => {
     }
 
     // Update incident
-    const resolvedAt = status === 'resolved' ? 'NOW()' : 'resolved_at';
     const result = await pool.query(`
       UPDATE incidents
       SET status = $1, updated_at = NOW(), resolved_at = ${status === 'resolved' ? 'NOW()' : 'resolved_at'}

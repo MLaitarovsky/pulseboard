@@ -1,12 +1,15 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db/pool';
+import { resolveTeamId } from '../utils/resolveTeam';
 
 const router = Router();
 
 // GET /api/teams/:teamId/events — paginated events list
 router.get('/:teamId/events', async (req: Request, res: Response) => {
   try {
-    const { teamId } = req.params;
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
+
     const { source, limit = '50', offset = '0' } = req.query;
 
     let query = `
@@ -28,10 +31,13 @@ router.get('/:teamId/events', async (req: Request, res: Response) => {
     const result = await pool.query(query, params);
 
     // Get total count
-    const countResult = await pool.query(
-      'SELECT COUNT(*) FROM events WHERE team_id = $1',
-      [teamId]
-    );
+    let countQuery = 'SELECT COUNT(*) FROM events WHERE team_id = $1';
+    const countParams: any[] = [teamId];
+    if (source) {
+      countQuery += ' AND source = $2';
+      countParams.push(source);
+    }
+    const countResult = await pool.query(countQuery, countParams);
 
     res.json({
       events: result.rows,
@@ -48,7 +54,9 @@ router.get('/:teamId/events', async (req: Request, res: Response) => {
 // POST /api/teams/:teamId/events — manually create an event
 router.post('/:teamId/events', async (req: Request, res: Response) => {
   try {
-    const { teamId } = req.params;
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
+
     const { source, eventType, title, description, severity, metadata } = req.body;
 
     const result = await pool.query(`

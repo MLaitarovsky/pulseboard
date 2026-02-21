@@ -1,14 +1,15 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db/pool';
+import { resolveTeamId } from '../utils/resolveTeam';
 
 const router = Router();
 
 // GET /api/teams/:teamId/metrics — latest snapshot
 router.get('/:teamId/metrics', async (req: Request, res: Response) => {
   try {
-    const { teamId } = req.params;
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
 
-    // Get latest value for each metric type
     const result = await pool.query(`
       SELECT DISTINCT ON (type) type, value, timestamp
       FROM metrics
@@ -48,7 +49,9 @@ router.get('/:teamId/metrics', async (req: Request, res: Response) => {
 // GET /api/teams/:teamId/metrics/history — time-series data
 router.get('/:teamId/metrics/history', async (req: Request, res: Response) => {
   try {
-    const { teamId } = req.params;
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
+
     const { type, from, to } = req.query;
 
     let query = `

@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 
 import { runMigrations } from './db/migrate';
 import { seedDatabase } from './db/seed';
-import { resolveTeamId } from './middleware/resolveTeam';
 import healthRouter from './routes/health';
 import teamsRouter from './routes/teams';
 import metricsRouter from './routes/metrics';
@@ -29,9 +28,6 @@ app.use(express.json());
 // --------------- Routes ---------------
 app.use('/api/health', healthRouter);
 app.use('/api/teams', teamsRouter);
-
-// Team-scoped routes — resolve slug to UUID first
-app.use('/api/teams/:teamId', resolveTeamId);
 app.use('/api/teams', metricsRouter);
 app.use('/api/teams', eventsRouter);
 app.use('/api/teams', incidentsRouter);
