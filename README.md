@@ -69,10 +69,10 @@ pulseboard/
 ## Features (Roadmap)
 
 - [x] Project scaffolding & monorepo setup
-- [ ] Core REST API (metrics, events, incidents)
-- [ ] Dashboard UI with metric cards
-- [ ] Webhook ingestion engine
-- [ ] Real-time WebSocket updates
+- [x] Core REST API (metrics, events, incidents)
+- [x] Dashboard UI with metric cards
+- [x] Webhook ingestion engine
+- [x] Real-time WebSocket updates
 - [ ] Interactive D3.js timeline
 - [ ] Live multiplayer cursors
 - [ ] Incident state machine
