@@ -1,17 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Github, Bug, Wifi, ChevronRight, RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useSocketContext } from './SocketProvider';
 
 interface EventItem {
-  id: string;
+  id?: string;
   source: 'github' | 'sentry' | 'uptime';
-  event_type: string;
+  event_type?: string;
+  eventType?: string;
   title: string;
   severity: 'info' | 'warning' | 'error' | 'critical';
-  occurred_at: string;
-  received_at: string;
+  occurred_at?: string;
+  occurredAt?: string;
+  received_at?: string;
+  isNew?: boolean;
 }
 
 interface EventsResponse {
@@ -55,6 +59,7 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { on, off } = useSocketContext();
 
   async function fetchEvents() {
     try {
@@ -74,6 +79,39 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  // Listen for real-time events via Socket.IO
+  useEffect(() => {
+    function handleNewEvent(event: any) {
+      const normalized: EventItem = {
+        id: event.id || `live-${Date.now()}`,
+        source: event.source,
+        event_type: event.eventType || event.event_type,
+        title: event.title,
+        severity: event.severity,
+        occurred_at: event.occurredAt || event.occurred_at || new Date().toISOString(),
+        isNew: true,
+      };
+
+      setEvents((prev) => {
+        // Prepend new event, keep max of `limit` items
+        const updated = [normalized, ...prev].slice(0, limit);
+        return updated;
+      });
+
+      // Remove the "isNew" highlight after 3 seconds
+      setTimeout(() => {
+        setEvents((prev) =>
+          prev.map((e) =>
+            e.id === normalized.id ? { ...e, isNew: false } : e
+          )
+        );
+      }, 3000);
+    }
+
+    on('new_event', handleNewEvent);
+    return () => off('new_event', handleNewEvent);
+  }, [on, off, limit]);
 
   if (loading) {
     return (
@@ -107,12 +145,16 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
 
   return (
     <div className="space-y-1">
-      {events.map((event) => {
+      {events.map((event, index) => {
         const Icon = sourceIcons[event.source] || Wifi;
+        const time = event.occurred_at || event.occurredAt || '';
         return (
           <div
-            key={event.id}
-            className="flex items-start gap-3 p-3 rounded-lg hover:bg-surface-2 transition-colors cursor-default group"
+            key={event.id || index}
+            className={clsx(
+              'flex items-start gap-3 p-3 rounded-lg hover:bg-surface-2 transition-all cursor-default group',
+              event.isNew && 'bg-accent-green/5 border-l-2 border-accent-green'
+            )}
           >
             {/* Source icon */}
             <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', sourceColors[event.source])}>
@@ -131,12 +173,16 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
                 </span>
                 <span className="text-text-dim/30">·</span>
                 <span className="text-[10px] text-text-dim">
-                  {timeAgo(event.occurred_at)}
+                  {time ? timeAgo(time) : 'just now'}
                 </span>
+                {event.isNew && (
+                  <span className="text-[9px] font-mono uppercase tracking-wider text-accent-green bg-accent-green/10 px-1.5 py-0.5 rounded">
+                    live
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Arrow on hover */}
             <ChevronRight className="w-3.5 h-3.5 text-text-dim/0 group-hover:text-text-dim/50 transition-colors shrink-0 mt-2" />
           </div>
         );

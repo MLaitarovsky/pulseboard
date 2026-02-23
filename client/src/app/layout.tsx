@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
+import { SocketProvider } from '@/components/SocketProvider';
 
 export const metadata: Metadata = {
   title: 'PulseBoard — Live Team Metrics & Incident Dashboard',
@@ -15,14 +16,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 ml-60">
-            <div className="p-6 max-w-[1400px] mx-auto">
-              {children}
-            </div>
-          </main>
-        </div>
+        <SocketProvider teamId="acme-eng">
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 ml-60">
+              <div className="p-6 max-w-[1400px] mx-auto">
+                {children}
+              </div>
+            </main>
+          </div>
+        </SocketProvider>
       </body>
     </html>
   );

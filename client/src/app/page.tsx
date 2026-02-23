@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -10,7 +10,9 @@ import {
   TrendingDown,
   Users,
 } from 'lucide-react';
+import { clsx } from 'clsx';
 import EventsFeed from '@/components/EventsFeed';
+import { useSocketContext } from '@/components/SocketProvider';
 
 const TEAM_ID = 'acme-eng';
 
@@ -35,6 +37,7 @@ function MetricCard({
   icon: Icon,
   color,
   trend,
+  flash,
 }: {
   label: string;
   value: string | number;
@@ -42,6 +45,7 @@ function MetricCard({
   icon: any;
   color: string;
   trend?: 'up' | 'down' | 'neutral';
+  flash?: boolean;
 }) {
   const colorClasses: Record<string, string> = {
     green: 'text-accent-green bg-accent-green/10 border-accent-green/20',
@@ -58,19 +62,25 @@ function MetricCard({
   };
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-5 hover:border-accent-green/30 transition-colors">
+    <div
+      className={clsx(
+        'bg-surface border border-border rounded-xl p-5 transition-all duration-500',
+        flash ? 'border-accent-green/50 shadow-[0_0_15px_rgba(0,229,160,0.1)]' : 'hover:border-accent-green/30'
+      )}
+    >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-text-dim uppercase tracking-wider font-mono">
           {label}
         </span>
-        <div
-          className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorClasses[color]}`}
-        >
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorClasses[color]}`}>
           <Icon className="w-4 h-4" />
         </div>
       </div>
       <div className="flex items-baseline gap-1.5">
-        <span className={`text-2xl font-bold font-mono ${valueColor[color]}`}>
+        <span className={clsx(
+          'text-2xl font-bold font-mono transition-all duration-300',
+          valueColor[color]
+        )}>
           {value}
         </span>
         {unit && <span className="text-sm text-text-dim">{unit}</span>}
@@ -91,50 +101,70 @@ function MetricCard({
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
-  const [incidents, setIncidents] = useState<IncidentSummary>({
-    open: 0,
-    investigating: 0,
-    critical: 0,
-  });
+  const [incidents, setIncidents] = useState<IncidentSummary>({ open: 0, investigating: 0, critical: 0 });
   const [loading, setLoading] = useState(true);
+  const [metricsFlash, setMetricsFlash] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        // Fetch metrics
-        const metricsRes = await fetch(`/api/teams/${TEAM_ID}/metrics`);
-        if (metricsRes.ok) {
-          const data = await metricsRes.json();
-          setMetrics(data);
-        }
+  const { status, viewers, on, off } = useSocketContext();
 
-        // Fetch open incidents for the count card
-        const incidentsRes = await fetch(
-          `/api/teams/${TEAM_ID}/incidents`
-        );
-        if (incidentsRes.ok) {
-          const data = await incidentsRes.json();
-          const open = data.filter(
-            (i: any) => i.status !== 'resolved'
-          ).length;
-          const investigating = data.filter(
-            (i: any) => i.status === 'investigating'
-          ).length;
-          const critical = data.filter(
-            (i: any) =>
-              i.severity === 'critical' && i.status !== 'resolved'
-          ).length;
-          setIncidents({ open, investigating, critical });
-        }
-      } catch (err) {
-        console.error('Failed to fetch dashboard data:', err);
-      } finally {
-        setLoading(false);
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const metricsRes = await fetch(`/api/teams/${TEAM_ID}/metrics`);
+      if (metricsRes.ok) {
+        const data = await metricsRes.json();
+        setMetrics(data);
       }
+    } catch (err) {
+      console.error('Failed to fetch metrics:', err);
+    }
+  }, []);
+
+  const fetchIncidents = useCallback(async () => {
+    try {
+      const incidentsRes = await fetch(`/api/teams/${TEAM_ID}/incidents`);
+      if (incidentsRes.ok) {
+        const data = await incidentsRes.json();
+        const open = data.filter((i: any) => i.status !== 'resolved').length;
+        const investigating = data.filter((i: any) => i.status === 'investigating').length;
+        const critical = data.filter((i: any) => i.severity === 'critical' && i.status !== 'resolved').length;
+        setIncidents({ open, investigating, critical });
+      }
+    } catch (err) {
+      console.error('Failed to fetch incidents:', err);
+    }
+  }, []);
+
+  // Initial fetch
+  useEffect(() => {
+    async function init() {
+      await Promise.all([fetchMetrics(), fetchIncidents()]);
+      setLoading(false);
+    }
+    init();
+  }, [fetchMetrics, fetchIncidents]);
+
+  // Listen for real-time metrics updates
+  useEffect(() => {
+    function handleMetricsUpdate() {
+      // Flash the metric cards to show they updated
+      setMetricsFlash(true);
+      setTimeout(() => setMetricsFlash(false), 1500);
+      // Refetch metrics
+      fetchMetrics();
     }
 
-    fetchData();
-  }, []);
+    function handleIncidentUpdate() {
+      fetchIncidents();
+    }
+
+    on('metrics_update', handleMetricsUpdate);
+    on('incident_update', handleIncidentUpdate);
+
+    return () => {
+      off('metrics_update', handleMetricsUpdate);
+      off('incident_update', handleIncidentUpdate);
+    };
+  }, [on, off, fetchMetrics, fetchIncidents]);
 
   return (
     <div>
@@ -148,9 +178,31 @@ export default function Dashboard() {
             Real-time overview of your system health and activity
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-text-dim bg-surface border border-border rounded-lg px-3 py-2">
+        <div className={clsx(
+          'flex items-center gap-2 text-xs bg-surface border rounded-lg px-3 py-2 transition-colors',
+          status === 'connected' ? 'text-text-dim border-border' : 'text-accent-yellow border-accent-yellow/30'
+        )}>
           <Users className="w-3.5 h-3.5" />
-          <span>1 viewer</span>
+          <span>{viewers.length || 1} viewer{(viewers.length || 1) !== 1 ? 's' : ''}</span>
+          {viewers.length > 1 && (
+            <div className="flex -space-x-1 ml-1">
+              {viewers.slice(0, 4).map((v) => (
+                <div
+                  key={v.userId}
+                  className="w-4 h-4 rounded-full border border-surface text-[7px] flex items-center justify-center font-bold"
+                  style={{ backgroundColor: v.color }}
+                  title={v.userName}
+                >
+                  {v.userName.charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {viewers.length > 4 && (
+                <div className="w-4 h-4 rounded-full bg-surface-3 border border-surface text-[7px] flex items-center justify-center text-text-dim">
+                  +{viewers.length - 4}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -158,47 +210,17 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="bg-surface border border-border rounded-xl p-5"
-            >
+            <div key={i} className="bg-surface border border-border rounded-xl p-5">
               <div className="skeleton h-4 w-20 mb-4" />
               <div className="skeleton h-8 w-24" />
             </div>
           ))
         ) : (
           <>
-            <MetricCard
-              label="Uptime"
-              value={metrics?.uptime?.toFixed(2) ?? '—'}
-              unit="%"
-              icon={Activity}
-              color="green"
-              trend="up"
-            />
-            <MetricCard
-              label="Error Rate"
-              value={metrics?.errorRate?.toFixed(2) ?? '—'}
-              unit="%"
-              icon={AlertTriangle}
-              color="red"
-              trend="down"
-            />
-            <MetricCard
-              label="Deploys (7d)"
-              value={metrics?.deployFrequency ?? '—'}
-              icon={Rocket}
-              color="purple"
-              trend="neutral"
-            />
-            <MetricCard
-              label="Response Time"
-              value={metrics?.responseTime?.toFixed(0) ?? '—'}
-              unit="ms"
-              icon={Clock}
-              color="yellow"
-              trend="up"
-            />
+            <MetricCard label="Uptime" value={metrics?.uptime?.toFixed(2) ?? '—'} unit="%" icon={Activity} color="green" trend="up" flash={metricsFlash} />
+            <MetricCard label="Error Rate" value={metrics?.errorRate?.toFixed(2) ?? '—'} unit="%" icon={AlertTriangle} color="red" trend="down" flash={metricsFlash} />
+            <MetricCard label="Deploys (7d)" value={metrics?.deployFrequency ?? '—'} icon={Rocket} color="purple" trend="neutral" flash={metricsFlash} />
+            <MetricCard label="Response Time" value={metrics?.responseTime?.toFixed(0) ?? '—'} unit="ms" icon={Clock} color="yellow" trend="up" flash={metricsFlash} />
           </>
         )}
       </div>
@@ -218,14 +240,15 @@ export default function Dashboard() {
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-text-primary">
-                Recent Events
-              </h2>
+              <h2 className="text-sm font-semibold text-text-primary">Recent Events</h2>
               <p className="text-[10px] text-text-dim font-mono uppercase tracking-wider mt-0.5">
                 Live feed
               </p>
             </div>
-            <div className="w-2 h-2 rounded-full bg-accent-green pulse-green" />
+            <div className={clsx(
+              'w-2 h-2 rounded-full',
+              status === 'connected' ? 'bg-accent-green pulse-green' : 'bg-accent-red'
+            )} />
           </div>
           <div className="max-h-[360px] overflow-y-auto">
             <EventsFeed limit={20} />
@@ -256,10 +279,7 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <a
-            href="/incidents"
-            className="text-xs text-accent-red hover:underline font-medium"
-          >
+          <a href="/incidents" className="text-xs text-accent-red hover:underline font-medium">
             View all →
           </a>
         </div>

@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 
 import { runMigrations } from './db/migrate';
 import { seedDatabase } from './db/seed';
+import { initializeSocket } from './services/socket';
 import healthRouter from './routes/health';
 import teamsRouter from './routes/teams';
 import metricsRouter from './routes/metrics';
@@ -44,6 +45,9 @@ async function start() {
     await runMigrations();
     await seedDatabase();
 
+    // Initialize Socket.IO (attaches to the HTTP server)
+    const io = initializeSocket(server);
+
     server.listen(PORT, () => {
       console.log(`
   ┌──────────────────────────────────────────┐
@@ -51,17 +55,10 @@ async function start() {
   │   🟢 PulseBoard Server Running          │
   │   http://localhost:${PORT}                 │
   │                                          │
+  │   REST API + Socket.IO on same port      │
   │   Health:    /api/health                 │
-  │   Teams:     /api/teams                  │
-  │   Metrics:   /api/teams/:id/metrics      │
-  │   Events:    /api/teams/:id/events       │
-  │   Incidents: /api/teams/:id/incidents    │
   │   Webhooks:  /api/webhooks/:source       │
-  │                                          │
-  │   Test webhooks (dev only):              │
-  │   GET /api/webhooks/test/github?team=acme-eng  │
-  │   GET /api/webhooks/test/sentry?team=acme-eng  │
-  │   GET /api/webhooks/test/uptime?team=acme-eng  │
+  │   WebSocket: ws://localhost:${PORT}        │
   │                                          │
   └──────────────────────────────────────────┘
       `);

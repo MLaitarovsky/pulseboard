@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, AlertTriangle, Radio, Settings, Activity } from 'lucide-react';
 import { clsx } from 'clsx';
+import ConnectionStatus from './ConnectionStatus';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -56,12 +57,9 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Connection Status */}
+      {/* Connection Status — now real */}
       <div className="p-4 border-t border-border">
-        <div className="flex items-center gap-2 text-xs text-text-dim">
-          <span className="w-2 h-2 rounded-full bg-accent-green pulse-green" />
-          Connected
-        </div>
+        <ConnectionStatus />
         <p className="text-[10px] text-text-dim/60 mt-1 font-mono">
           Acme Engineering
         </p>
