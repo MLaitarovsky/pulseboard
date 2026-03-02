@@ -24,13 +24,23 @@ interface CursorPosition {
   timestamp: number;
 }
 
+export interface LiveEvent {
+  id: string;
+  source: string;
+  eventType: string;
+  title: string;
+  severity: string;
+  occurredAt: string;
+}
+
 interface UseSocketReturn {
   status: ConnectionStatus;
   viewers: PresenceUser[];
   cursors: Map<string, CursorPosition>;
   sendCursorMove: (x: number, y: number, page: string) => void;
-  on: (event: string, callback: (...args: any[]) => void) => void;
-  off: (event: string, callback: (...args: any[]) => void) => void;
+  lastEvent: LiveEvent | null;
+  metricsVersion: number;
+  incidentVersion: number;
 }
 
 export function useSocket(teamId: string): UseSocketReturn {
@@ -38,9 +48,11 @@ export function useSocket(teamId: string): UseSocketReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [viewers, setViewers] = useState<PresenceUser[]>([]);
   const [cursors, setCursors] = useState<Map<string, CursorPosition>>(new Map());
+  const [lastEvent, setLastEvent] = useState<LiveEvent | null>(null);
+  const [metricsVersion, setMetricsVersion] = useState(0);
+  const [incidentVersion, setIncidentVersion] = useState(0);
 
   useEffect(() => {
-    // Connect to Socket.IO server
     const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -51,19 +63,21 @@ export function useSocket(teamId: string): UseSocketReturn {
 
     socketRef.current = socket;
 
+    // Debug: log all incoming events
+    socket.onAny((eventName, ...args) => {
+      console.log(`📨 Socket event: ${eventName}`, args);
+    });
+
     // --- Connection lifecycle ---
     socket.on('connect', () => {
       setStatus('connected');
-      console.log('🟢 Socket connected');
-      // Join team room
+      console.log('🟢 Socket connected:', socket.id);
       socket.emit('join_team', {
         teamId,
         userId: `user-${socket.id?.substring(0, 6)}`,
         userName: `User ${socket.id?.substring(0, 4)}`,
       });
     });
-
-    socket.on('connecting', () => setStatus('connecting'));
 
     socket.on('disconnect', (reason) => {
       setStatus('disconnected');
@@ -73,17 +87,6 @@ export function useSocket(teamId: string): UseSocketReturn {
     socket.on('reconnect_attempt', (attempt) => {
       setStatus('connecting');
       console.log(`🟡 Reconnecting... attempt ${attempt}`);
-    });
-
-    socket.on('reconnect', () => {
-      setStatus('connected');
-      console.log('🟢 Socket reconnected');
-      // Re-join team room after reconnect
-      socket.emit('join_team', {
-        teamId,
-        userId: `user-${socket.id?.substring(0, 6)}`,
-        userName: `User ${socket.id?.substring(0, 4)}`,
-      });
     });
 
     // --- Presence ---
@@ -113,6 +116,29 @@ export function useSocket(teamId: string): UseSocketReturn {
       });
     });
 
+    // --- Live data events (handled HERE, exposed as state) ---
+    socket.on('new_event', (event: any) => {
+      console.log('🔥 new_event received in hook:', event);
+      setLastEvent({
+        id: event.id || `live-${Date.now()}-${Math.random()}`,
+        source: event.source,
+        eventType: event.eventType || event.event_type || '',
+        title: event.title,
+        severity: event.severity,
+        occurredAt: event.occurredAt || event.occurred_at || new Date().toISOString(),
+      });
+    });
+
+    socket.on('metrics_update', () => {
+      console.log('📊 metrics_update received');
+      setMetricsVersion((v) => v + 1);
+    });
+
+    socket.on('incident_update', () => {
+      console.log('🚨 incident_update received');
+      setIncidentVersion((v) => v + 1);
+    });
+
     // Cleanup
     return () => {
       socket.removeAllListeners();
@@ -121,21 +147,20 @@ export function useSocket(teamId: string): UseSocketReturn {
     };
   }, [teamId]);
 
-  // Clean up stale cursors (no update in 5 seconds)
+  // Clean up stale cursors
   useEffect(() => {
     const interval = setInterval(() => {
       setCursors((prev) => {
         const now = Date.now();
         const next = new Map(prev);
-        for (const [userId, cursor] of next) {
+        next.forEach((cursor, userId) => {
           if (now - cursor.timestamp > 5000) {
             next.delete(userId);
           }
-        }
+        });
         return next;
       });
     }, 2000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -143,13 +168,5 @@ export function useSocket(teamId: string): UseSocketReturn {
     socketRef.current?.emit('cursor_move', { x, y, page });
   }, []);
 
-  const on = useCallback((event: string, callback: (...args: any[]) => void) => {
-    socketRef.current?.on(event, callback);
-  }, []);
-
-  const off = useCallback((event: string, callback: (...args: any[]) => void) => {
-    socketRef.current?.off(event, callback);
-  }, []);
-
-  return { status, viewers, cursors, sendCursorMove, on, off };
+  return { status, viewers, cursors, sendCursorMove, lastEvent, metricsVersion, incidentVersion };
 }

@@ -148,46 +148,32 @@ export function initializeSocket(server: http.Server): SocketServer {
  * Subscribe to Redis channels and forward events to Socket.IO rooms.
  */
 function setupRedisBridge(io: SocketServer): void {
-  // Subscribe to all team event channels
-  redisSub.psubscribe("team:*:events", (err) => {
+  redisSub.psubscribe("team:*:events", (err, count) => {
     if (err) {
       console.error("❌ Redis psubscribe error:", err);
       return;
     }
-    console.log("📡 Subscribed to Redis team event channels");
+    console.log(`📡 Subscribed to ${count} Redis channel(s)`);
   });
 
-  redisSub.on("pmessage", (_pattern, channel, message) => {
+  redisSub.on("pmessage", (pattern, channel, message) => {
+    console.log(`📨 Redis pmessage received — channel: ${channel}`);
+
     try {
-      // channel format: "team:<teamId>:events"
       const parts = channel.split(":");
       const teamId = parts[1];
       const event = JSON.parse(message);
 
-      // Broadcast to all sockets in the team room
-      io.to(`team:${teamId}`).emit("new_event", event);
+      // Check how many sockets are in the room
+      const room = io.sockets.adapter.rooms.get(`team:${teamId}`);
+      console.log(
+        `📡 Broadcasting to team:${teamId} — ${room?.size || 0} socket(s) in room`,
+      );
 
-      // Also emit a metrics update signal so clients refetch metrics
+      io.to(`team:${teamId}`).emit("new_event", event);
       io.to(`team:${teamId}`).emit("metrics_update", { refetch: true });
     } catch (error) {
-      console.error("Error forwarding Redis message to Socket.IO:", error);
-    }
-  });
-
-  // Also subscribe to incident updates
-  redisSub.psubscribe("team:*:incidents", (err) => {
-    if (err) console.error("❌ Redis psubscribe (incidents) error:", err);
-  });
-
-  redisSub.on("pmessage", (_pattern, channel, message) => {
-    if (!channel.endsWith(":incidents")) return;
-    try {
-      const parts = channel.split(":");
-      const teamId = parts[1];
-      const incident = JSON.parse(message);
-      io.to(`team:${teamId}`).emit("incident_update", incident);
-    } catch (error) {
-      console.error("Error forwarding incident update:", error);
+      console.error("Error forwarding Redis message:", error);
     }
   });
 }

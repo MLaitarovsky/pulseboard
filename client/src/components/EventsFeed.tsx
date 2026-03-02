@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Github, Bug, Wifi, ChevronRight, RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSocketContext } from './SocketProvider';
@@ -59,7 +59,7 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { on, off } = useSocketContext();
+  const { lastEvent } = useSocketContext();
 
   async function fetchEvents() {
     try {
@@ -80,38 +80,38 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
     fetchEvents();
   }, []);
 
-  // Listen for real-time events via Socket.IO
+  // React to live events from socket context
   useEffect(() => {
-    function handleNewEvent(event: any) {
-      const normalized: EventItem = {
-        id: event.id || `live-${Date.now()}`,
-        source: event.source,
-        event_type: event.eventType || event.event_type,
-        title: event.title,
-        severity: event.severity,
-        occurred_at: event.occurredAt || event.occurred_at || new Date().toISOString(),
-        isNew: true,
-      };
+    if (!lastEvent) return;
 
-      setEvents((prev) => {
-        // Prepend new event, keep max of `limit` items
-        const updated = [normalized, ...prev].slice(0, limit);
-        return updated;
-      });
+    console.log('🔥 EventsFeed got live event:', lastEvent);
 
-      // Remove the "isNew" highlight after 3 seconds
-      setTimeout(() => {
-        setEvents((prev) =>
-          prev.map((e) =>
-            e.id === normalized.id ? { ...e, isNew: false } : e
-          )
-        );
-      }, 3000);
-    }
+    const newItem: EventItem = {
+      id: lastEvent.id,
+      source: lastEvent.source as any,
+      event_type: lastEvent.eventType,
+      title: lastEvent.title,
+      severity: lastEvent.severity as any,
+      occurred_at: lastEvent.occurredAt,
+      isNew: true,
+    };
 
-    on('new_event', handleNewEvent);
-    return () => off('new_event', handleNewEvent);
-  }, [on, off, limit]);
+    setEvents((prev) => {
+      const updated = [newItem, ...prev].slice(0, limit);
+      return updated;
+    });
+
+    // Remove highlight after 3 seconds
+    const timeoutId = setTimeout(() => {
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === newItem.id ? { ...e, isNew: false } : e
+        )
+      );
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  }, [lastEvent, limit]);
 
   if (loading) {
     return (
@@ -156,12 +156,9 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
               event.isNew && 'bg-accent-green/5 border-l-2 border-accent-green'
             )}
           >
-            {/* Source icon */}
             <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', sourceColors[event.source])}>
               <Icon className="w-3.5 h-3.5" />
             </div>
-
-            {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', severityDots[event.severity])} />
@@ -182,7 +179,6 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
                 )}
               </div>
             </div>
-
             <ChevronRight className="w-3.5 h-3.5 text-text-dim/0 group-hover:text-text-dim/50 transition-colors shrink-0 mt-2" />
           </div>
         );

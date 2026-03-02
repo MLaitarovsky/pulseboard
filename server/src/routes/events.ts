@@ -10,7 +10,7 @@ router.get('/:teamId/events', async (req: Request, res: Response) => {
     const teamId = await resolveTeamId(req.params.teamId);
     if (!teamId) return res.status(404).json({ error: 'Team not found' });
 
-    const { source, limit = '50', offset = '0' } = req.query;
+    const { source, limit = '50', offset = '0', from, to } = req.query;
 
     let query = `
       SELECT id, team_id, source, event_type, title, description, severity, metadata, occurred_at, received_at
@@ -25,7 +25,17 @@ router.get('/:teamId/events', async (req: Request, res: Response) => {
       params.push(source);
     }
 
-    query += ` ORDER BY received_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    if (from) {
+      query += ` AND occurred_at >= $${paramIndex++}`;
+      params.push(from);
+    }
+
+    if (to) {
+      query += ` AND occurred_at <= $${paramIndex++}`;
+      params.push(to);
+    }
+
+    query += ` ORDER BY occurred_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
     params.push(parseInt(limit as string), parseInt(offset as string));
 
     const result = await pool.query(query, params);
@@ -33,9 +43,18 @@ router.get('/:teamId/events', async (req: Request, res: Response) => {
     // Get total count
     let countQuery = 'SELECT COUNT(*) FROM events WHERE team_id = $1';
     const countParams: any[] = [teamId];
+    let countIdx = 2;
     if (source) {
-      countQuery += ' AND source = $2';
+      countQuery += ` AND source = $${countIdx++}`;
       countParams.push(source);
+    }
+    if (from) {
+      countQuery += ` AND occurred_at >= $${countIdx++}`;
+      countParams.push(from);
+    }
+    if (to) {
+      countQuery += ` AND occurred_at <= $${countIdx++}`;
+      countParams.push(to);
     }
     const countResult = await pool.query(countQuery, countParams);
 
