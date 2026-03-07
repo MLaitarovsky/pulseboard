@@ -13,6 +13,7 @@ import eventsRouter from './routes/events';
 import incidentsRouter from './routes/incidents';
 import webhooksRouter from './routes/webhooks';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import annotationsRouter from './routes/annotations';
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use('/api/teams', metricsRouter);
 app.use('/api/teams', eventsRouter);
 app.use('/api/teams', incidentsRouter);
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/teams', annotationsRouter);
 
 // --------------- Error Handling ---------------
 app.use(notFoundHandler);

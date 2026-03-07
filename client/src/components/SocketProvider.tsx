@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useSocket, ConnectionStatus, LiveEvent } from '@/hooks/useSocket';
+import { useSocket, ConnectionStatus, LiveEvent, LiveAnnotation } from '@/hooks/useSocket';
 
 interface PresenceUser {
   userId: string;
@@ -27,6 +27,7 @@ interface SocketContextValue {
   sendCursorMove: (x: number, y: number, page: string) => void;
   lastEvent: LiveEvent | null;
   eventBatch: LiveEvent[];
+  lastAnnotation: LiveAnnotation | null;
   metricsVersion: number;
   incidentVersion: number;
 }
