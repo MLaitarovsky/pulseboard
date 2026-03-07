@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Github, Bug, Wifi, ChevronRight, RefreshCw } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Github, Bug, Wifi, ChevronRight, RefreshCw, ChevronUp } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSocketContext } from './SocketProvider';
 
@@ -59,7 +59,12 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { lastEvent } = useSocketContext();
+  const { lastEvent, eventBatch } = useSocketContext();
+
+  // ─── "New events" banner state ───
+  const [pendingEvents, setPendingEvents] = useState<EventItem[]>([]);
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   async function fetchEvents() {
     try {
@@ -80,11 +85,54 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
     fetchEvents();
   }, []);
 
-  // React to live events from socket context
-  useEffect(() => {
-    if (!lastEvent) return;
+  // ─── Detect scroll position ───
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    // Consider "scrolled down" if more than 60px from the top
+    setIsScrolledDown(container.scrollTop > 60);
+  }, []);
 
-    console.log('🔥 EventsFeed got live event:', lastEvent);
+  // ─── React to live event batches ───
+  useEffect(() => {
+    if (!eventBatch || eventBatch.length === 0) return;
+
+    const newItems: EventItem[] = eventBatch.map((e) => ({
+      id: e.id,
+      source: e.source as any,
+      event_type: e.eventType,
+      title: e.title,
+      severity: e.severity as any,
+      occurred_at: e.occurredAt,
+      isNew: true,
+    }));
+
+    if (isScrolledDown) {
+      // User has scrolled down — buffer events and show banner
+      setPendingEvents((prev) => [...newItems, ...prev]);
+    } else {
+      // User is at top — prepend immediately
+      setEvents((prev) => {
+        const updated = [...newItems, ...prev].slice(0, limit);
+        return updated;
+      });
+
+      // Remove highlight after 3 seconds
+      const ids = newItems.map((e) => e.id);
+      setTimeout(() => {
+        setEvents((prev) =>
+          prev.map((e) =>
+            ids.includes(e.id) ? { ...e, isNew: false } : e
+          )
+        );
+      }, 3000);
+    }
+  }, [eventBatch, isScrolledDown, limit]);
+
+  // Fallback: also react to single lastEvent for components that only send one at a time
+  // (This catches events that come through without batching)
+  useEffect(() => {
+    if (!lastEvent || (eventBatch && eventBatch.length > 0)) return;
 
     const newItem: EventItem = {
       id: lastEvent.id,
@@ -96,22 +144,35 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
       isNew: true,
     };
 
-    setEvents((prev) => {
-      const updated = [newItem, ...prev].slice(0, limit);
-      return updated;
-    });
+    if (isScrolledDown) {
+      setPendingEvents((prev) => [newItem, ...prev]);
+    } else {
+      setEvents((prev) => [newItem, ...prev].slice(0, limit));
+      setTimeout(() => {
+        setEvents((prev) =>
+          prev.map((e) => e.id === newItem.id ? { ...e, isNew: false } : e)
+        );
+      }, 3000);
+    }
+  }, [lastEvent]);
 
-    // Remove highlight after 3 seconds
-    const timeoutId = setTimeout(() => {
+  // ─── Show pending events (click banner) ───
+  function showPendingEvents() {
+    const withHighlight = pendingEvents.map((e) => ({ ...e, isNew: true }));
+    setEvents((prev) => [...withHighlight, ...prev].slice(0, limit));
+    setPendingEvents([]);
+
+    // Scroll to top
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Remove highlights after 3s
+    const ids = withHighlight.map((e) => e.id);
+    setTimeout(() => {
       setEvents((prev) =>
-        prev.map((e) =>
-          e.id === newItem.id ? { ...e, isNew: false } : e
-        )
+        prev.map((e) => ids.includes(e.id) ? { ...e, isNew: false } : e)
       );
     }, 3000);
-
-    return () => clearTimeout(timeoutId);
-  }, [lastEvent, limit]);
+  }
 
   if (loading) {
     return (
@@ -144,45 +205,62 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   }
 
   return (
-    <div className="space-y-1">
-      {events.map((event, index) => {
-        const Icon = sourceIcons[event.source] || Wifi;
-        const time = event.occurred_at || event.occurredAt || '';
-        return (
-          <div
-            key={event.id || index}
-            className={clsx(
-              'flex items-start gap-3 p-3 rounded-lg hover:bg-surface-2 transition-all cursor-default group',
-              event.isNew && 'bg-accent-green/5 border-l-2 border-accent-green'
-            )}
-          >
-            <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', sourceColors[event.source])}>
-              <Icon className="w-3.5 h-3.5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', severityDots[event.severity])} />
-                <p className="text-sm text-text-primary truncate">{event.title}</p>
+    <div className="relative">
+      {/* ─── "New events" banner ─── */}
+      {pendingEvents.length > 0 && (
+        <button
+          onClick={showPendingEvents}
+          className="absolute top-0 left-0 right-0 z-10 flex items-center justify-center gap-2 py-2 text-xs font-medium transition-all bg-accent-green/15 text-accent-green border-b border-accent-green/20 hover:bg-accent-green/25 backdrop-blur-sm"
+        >
+          <ChevronUp className="w-3.5 h-3.5" />
+          {pendingEvents.length} new event{pendingEvents.length !== 1 ? 's' : ''}
+        </button>
+      )}
+
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="space-y-1 max-h-[360px] overflow-y-auto"
+      >
+        {events.map((event, index) => {
+          const Icon = sourceIcons[event.source] || Wifi;
+          const time = event.occurred_at || event.occurredAt || '';
+          return (
+            <div
+              key={event.id || index}
+              className={clsx(
+                'flex items-start gap-3 p-3 rounded-lg hover:bg-surface-2 transition-all cursor-default group',
+                event.isNew && 'bg-accent-green/5 border-l-2 border-accent-green'
+              )}
+            >
+              <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', sourceColors[event.source])}>
+                <Icon className="w-3.5 h-3.5" />
               </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-text-dim">
-                  {event.source}
-                </span>
-                <span className="text-text-dim/30">·</span>
-                <span className="text-[10px] text-text-dim">
-                  {time ? timeAgo(time) : 'just now'}
-                </span>
-                {event.isNew && (
-                  <span className="text-[9px] font-mono uppercase tracking-wider text-accent-green bg-accent-green/10 px-1.5 py-0.5 rounded">
-                    live
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', severityDots[event.severity])} />
+                  <p className="text-sm text-text-primary truncate">{event.title}</p>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-text-dim">
+                    {event.source}
                   </span>
-                )}
+                  <span className="text-text-dim/30">·</span>
+                  <span className="text-[10px] text-text-dim">
+                    {time ? timeAgo(time) : 'just now'}
+                  </span>
+                  {event.isNew && (
+                    <span className="text-[9px] font-mono uppercase tracking-wider text-accent-green bg-accent-green/10 px-1.5 py-0.5 rounded">
+                      live
+                    </span>
+                  )}
+                </div>
               </div>
+              <ChevronRight className="w-3.5 h-3.5 text-text-dim/0 group-hover:text-text-dim/50 transition-colors shrink-0 mt-2" />
             </div>
-            <ChevronRight className="w-3.5 h-3.5 text-text-dim/0 group-hover:text-text-dim/50 transition-colors shrink-0 mt-2" />
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

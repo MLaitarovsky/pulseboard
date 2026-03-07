@@ -26,6 +26,7 @@ interface SocketContextValue {
   cursors: Map<string, CursorPosition>;
   sendCursorMove: (x: number, y: number, page: string) => void;
   lastEvent: LiveEvent | null;
+  eventBatch: LiveEvent[];
   metricsVersion: number;
   incidentVersion: number;
 }

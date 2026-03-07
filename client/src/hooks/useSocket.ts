@@ -39,9 +39,12 @@ interface UseSocketReturn {
   cursors: Map<string, CursorPosition>;
   sendCursorMove: (x: number, y: number, page: string) => void;
   lastEvent: LiveEvent | null;
+  eventBatch: LiveEvent[];
   metricsVersion: number;
   incidentVersion: number;
 }
+
+const BATCH_INTERVAL = 200; // ms — flush buffered events every 200ms
 
 export function useSocket(teamId: string): UseSocketReturn {
   const socketRef = useRef<Socket | null>(null);
@@ -49,8 +52,27 @@ export function useSocket(teamId: string): UseSocketReturn {
   const [viewers, setViewers] = useState<PresenceUser[]>([]);
   const [cursors, setCursors] = useState<Map<string, CursorPosition>>(new Map());
   const [lastEvent, setLastEvent] = useState<LiveEvent | null>(null);
+  const [eventBatch, setEventBatch] = useState<LiveEvent[]>([]);
   const [metricsVersion, setMetricsVersion] = useState(0);
   const [incidentVersion, setIncidentVersion] = useState(0);
+
+  // ─── Event batching buffer ───
+  const eventBufferRef = useRef<LiveEvent[]>([]);
+  const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastEventTimeRef = useRef<string | null>(null);
+
+  // Flush buffered events to state
+  const flushBuffer = useCallback(() => {
+    if (eventBufferRef.current.length === 0) return;
+    const batch = [...eventBufferRef.current];
+    eventBufferRef.current = [];
+
+    // Set the most recent event as lastEvent (for components that watch individual events)
+    setLastEvent(batch[batch.length - 1]);
+
+    // Set the full batch (for components that want all at once)
+    setEventBatch(batch);
+  }, []);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
@@ -89,6 +111,47 @@ export function useSocket(teamId: string): UseSocketReturn {
       console.log(`🟡 Reconnecting... attempt ${attempt}`);
     });
 
+    // ─── Reconnect recovery: fetch missed events ───
+    socket.on('reconnect', () => {
+      setStatus('connected');
+      console.log('🟢 Socket reconnected — fetching missed events');
+
+      // Re-join room
+      socket.emit('join_team', {
+        teamId,
+        userId: `user-${socket.id?.substring(0, 6)}`,
+        userName: `User ${socket.id?.substring(0, 4)}`,
+      });
+
+      // Fetch events since last received timestamp
+      if (lastEventTimeRef.current) {
+        const since = encodeURIComponent(lastEventTimeRef.current);
+        fetch(`/api/teams/${teamId}/events?limit=50&from=${since}`)
+          .then((res) => res.ok ? res.json() : null)
+          .then((data) => {
+            if (data?.events?.length > 0) {
+              console.log(`📥 Recovered ${data.events.length} missed events`);
+              const recovered: LiveEvent[] = data.events.map((e: any) => ({
+                id: e.id,
+                source: e.source,
+                eventType: e.event_type || e.eventType || '',
+                title: e.title,
+                severity: e.severity,
+                occurredAt: e.occurred_at || e.occurredAt || new Date().toISOString(),
+              }));
+              // Push recovered events through the batch system
+              eventBufferRef.current.push(...recovered);
+              flushBuffer();
+            }
+          })
+          .catch((err) => console.warn('Failed to recover missed events:', err));
+      }
+
+      // Also bump metrics/incidents version to trigger refetches
+      setMetricsVersion((v) => v + 1);
+      setIncidentVersion((v) => v + 1);
+    });
+
     // --- Presence ---
     socket.on('viewers_list', (list: PresenceUser[]) => {
       setViewers(list);
@@ -116,17 +179,39 @@ export function useSocket(teamId: string): UseSocketReturn {
       });
     });
 
-    // --- Live data events (handled HERE, exposed as state) ---
+    // ─── Live data events with BATCHING ───
     socket.on('new_event', (event: any) => {
       console.log('🔥 new_event received in hook:', event);
-      setLastEvent({
+
+      const normalized: LiveEvent = {
         id: event.id || `live-${Date.now()}-${Math.random()}`,
         source: event.source,
         eventType: event.eventType || event.event_type || '',
         title: event.title,
         severity: event.severity,
         occurredAt: event.occurredAt || event.occurred_at || new Date().toISOString(),
-      });
+      };
+
+      // Track last received time for reconnect recovery
+      lastEventTimeRef.current = normalized.occurredAt;
+
+      // Buffer the event instead of setting state immediately
+      eventBufferRef.current.push(normalized);
+
+      // Start a flush timer if one isn't already running
+      if (!batchTimerRef.current) {
+        batchTimerRef.current = setTimeout(() => {
+          batchTimerRef.current = null;
+          // Flush all buffered events at once
+          const batch = [...eventBufferRef.current];
+          eventBufferRef.current = [];
+
+          if (batch.length > 0) {
+            setLastEvent(batch[batch.length - 1]);
+            setEventBatch(batch);
+          }
+        }, BATCH_INTERVAL);
+      }
     });
 
     socket.on('metrics_update', () => {
@@ -141,11 +226,15 @@ export function useSocket(teamId: string): UseSocketReturn {
 
     // Cleanup
     return () => {
+      if (batchTimerRef.current) {
+        clearTimeout(batchTimerRef.current);
+        batchTimerRef.current = null;
+      }
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [teamId]);
+  }, [teamId, flushBuffer]);
 
   // Clean up stale cursors
   useEffect(() => {
@@ -168,5 +257,5 @@ export function useSocket(teamId: string): UseSocketReturn {
     socketRef.current?.emit('cursor_move', { x, y, page });
   }, []);
 
-  return { status, viewers, cursors, sendCursorMove, lastEvent, metricsVersion, incidentVersion };
+  return { status, viewers, cursors, sendCursorMove, lastEvent, eventBatch, metricsVersion, incidentVersion };
 }
