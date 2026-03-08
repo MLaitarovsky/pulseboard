@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useSocket, ConnectionStatus, LiveEvent, LiveAnnotation } from '@/hooks/useSocket';
+import { useSocket, ConnectionStatus, LiveEvent, LiveAnnotation, TimelineCursorData } from '@/hooks/useSocket';
 
 interface PresenceUser {
   userId: string;
@@ -25,11 +25,13 @@ interface SocketContextValue {
   viewers: PresenceUser[];
   cursors: Map<string, CursorPosition>;
   sendCursorMove: (x: number, y: number, page: string) => void;
+  sendTimelineCursor: (timestamp: string | null) => void;
+  timelineCursors: Map<string, TimelineCursorData>;
   lastEvent: LiveEvent | null;
   eventBatch: LiveEvent[];
-  lastAnnotation: LiveAnnotation | null;
   metricsVersion: number;
   incidentVersion: number;
+  lastAnnotation: LiveAnnotation | null;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);

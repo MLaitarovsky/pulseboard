@@ -82,7 +82,8 @@ export default function TimelineChart() {
   const [annotateText, setAnnotateText] = useState('');
 
   // ─── USE REACTIVE STATE from context (NOT on/off) ───
-  const { lastEvent, metricsVersion, lastAnnotation } = useSocketContext();
+  const { lastEvent, metricsVersion, lastAnnotation, sendTimelineCursor, timelineCursors } = useSocketContext();
+  const xScaleRef = useRef<d3.ScaleTime<number, number> | null>(null);
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -194,6 +195,7 @@ export default function TimelineChart() {
 
     // Scales
     const xScale = d3.scaleTime().domain([start, now]).range([0, width]);
+    xScaleRef.current = xScale;
 
     // Source lanes (y positions)
     const sources = ['github', 'sentry', 'uptime'] as const;
@@ -769,6 +771,31 @@ export default function TimelineChart() {
       brushGroupNode.style('display', '');
     }
 
+    // ─── Timeline cursor overlay for other users ───
+    const cursorOverlayGroup = g.append('g').attr('class', 'timeline-cursors');
+
+    // ─── Mousemove on SVG: send hovered timestamp to other users ───
+    const throttleRef = { last: 0 };
+    svg.on('mousemove.timeline_cursor', (event: any) => {
+      const now2 = Date.now();
+      if (now2 - throttleRef.last < 50) return; // throttle to ~20fps
+      throttleRef.last = now2;
+
+      const [mx] = d3.pointer(event, g.node());
+      if (mx < 0 || mx > width) return;
+
+      // Apply current zoom transform to get the correct timestamp
+      const currentXScale = currentTransformRef.current !== d3.zoomIdentity
+        ? currentTransformRef.current.rescaleX(xScale)
+        : xScale;
+      const hoveredDate = currentXScale.invert(mx);
+      sendTimelineCursor(hoveredDate.toISOString());
+    });
+
+    svg.on('mouseleave.timeline_cursor', () => {
+      sendTimelineCursor(null);
+    });
+
     zoomRef.current = zoom;
 
     if (currentTransformRef.current !== d3.zoomIdentity) {
@@ -828,6 +855,62 @@ export default function TimelineChart() {
       annotateModeRef.current = false;
     }
   }
+
+  // ─── Render other users' timeline cursors ───
+  useEffect(() => {
+    if (!svgRef.current || !xScaleRef.current) return;
+    const svg = d3.select(svgRef.current);
+    const cursorGroup = svg.select('.timeline-cursors');
+    if (cursorGroup.empty()) return;
+
+    cursorGroup.selectAll('*').remove();
+
+    const currentXScale = currentTransformRef.current !== d3.zoomIdentity
+      ? currentTransformRef.current.rescaleX(xScaleRef.current)
+      : xScaleRef.current;
+
+    const margin = { top: 30, bottom: 40 };
+    const chartHeight = dimensions.height - margin.top - margin.bottom;
+
+    timelineCursors.forEach((cursor) => {
+      const t = new Date(cursor.timestamp);
+      const cx = currentXScale(t);
+      if (cx < 0 || cx > dimensions.width) return;
+
+      // Vertical line
+      cursorGroup.append('line')
+        .attr('x1', cx).attr('x2', cx)
+        .attr('y1', margin.top).attr('y2', chartHeight + margin.top)
+        .attr('stroke', cursor.color)
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '4,3')
+        .attr('opacity', 0.6);
+
+      // Name label pill at top
+      const labelG = cursorGroup.append('g')
+        .attr('transform', `translate(${cx}, ${margin.top - 2})`);
+
+      const labelWidth = cursor.userName.length * 6 + 12;
+
+      labelG.append('rect')
+        .attr('x', -2)
+        .attr('y', -14)
+        .attr('width', labelWidth)
+        .attr('height', 16)
+        .attr('rx', 8)
+        .attr('fill', cursor.color)
+        .attr('opacity', 0.9);
+
+      labelG.append('text')
+        .attr('x', 4)
+        .attr('y', -2)
+        .attr('fill', '#000')
+        .attr('font-size', '9px')
+        .attr('font-family', 'monospace')
+        .attr('font-weight', '600')
+        .text(cursor.userName);
+    });
+  }, [timelineCursors, dimensions]);
 
   const resetZoom = () => {
     if (svgRef.current && zoomRef.current) {

@@ -121,6 +121,17 @@ export function initializeSocket(server: http.Server): SocketServer {
       });
     });
 
+    socket.on("timeline_cursor", (data: { timestamp: string | null }) => {
+      if (!currentUser) return;
+
+      socket.to(`team:${currentUser.teamId}`).emit("timeline_cursor", {
+        userId: currentUser.userId,
+        userName: currentUser.userName,
+        color: currentUser.color,
+        timestamp: data.timestamp,
+      });
+    });
+
     // --- Disconnect ---
     socket.on("disconnect", (reason) => {
       if (currentUser) {
@@ -148,32 +159,21 @@ export function initializeSocket(server: http.Server): SocketServer {
  * Subscribe to Redis channels and forward events to Socket.IO rooms.
  */
 function setupRedisBridge(io: SocketServer): void {
-  redisSub.psubscribe("team:*:events", (err, count) => {
-    if (err) {
-      console.error("❌ Redis psubscribe error:", err);
-      return;
-    }
-    console.log(`📡 Subscribed to ${count} Redis channel(s)`);
+  redisSub.psubscribe("team:*:annotations", (err) => {
+    if (err) console.error("❌ Redis psubscribe (annotations) error:", err);
   });
 
-  redisSub.on("pmessage", (pattern, channel, message) => {
-    console.log(`📨 Redis pmessage received — channel: ${channel}`);
-
+  redisSub.on("pmessage", (_pattern, channel, message) => {
+    if (!channel.endsWith(":annotations")) return;
     try {
       const parts = channel.split(":");
       const teamId = parts[1];
-      const event = JSON.parse(message);
-
-      // Check how many sockets are in the room
-      const room = io.sockets.adapter.rooms.get(`team:${teamId}`);
-      console.log(
-        `📡 Broadcasting to team:${teamId} — ${room?.size || 0} socket(s) in room`,
-      );
-
-      io.to(`team:${teamId}`).emit("new_event", event);
-      io.to(`team:${teamId}`).emit("metrics_update", { refetch: true });
+      const data = JSON.parse(message);
+      if (data.type === "new_annotation") {
+        io.to(`team:${teamId}`).emit("new_annotation", data.annotation);
+      }
     } catch (error) {
-      console.error("Error forwarding Redis message:", error);
+      console.error("Error forwarding annotation update:", error);
     }
   });
 }
