@@ -3,6 +3,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { SocketProvider } from "@/components/SocketProvider";
 import CursorOverlay from "@/components/CursorOverlay";
+import NotificationToasts from "@/components/NotificationToasts";
 
 export const metadata: Metadata = {
   title: "PulseBoard — Live Team Metrics & Incident Dashboard",
@@ -25,6 +26,7 @@ export default function RootLayout({
             </main>
           </div>
           <CursorOverlay />
+          <NotificationToasts />
         </SocketProvider>
       </body>
     </html>

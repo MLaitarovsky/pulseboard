@@ -46,8 +46,19 @@ export interface TimelineCursorData {
   userId: string;
   userName: string;
   color: string;
-  timestamp: string; // ISO date string — the hovered point on the timeline
+  timestamp: string;
   updatedAt: number;
+}
+
+export interface LiveNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  severity: string;
+  incidentId?: string;
+  actor: string;
+  timestamp: string;
 }
 
 interface UseSocketReturn {
@@ -62,6 +73,7 @@ interface UseSocketReturn {
   metricsVersion: number;
   incidentVersion: number;
   lastAnnotation: LiveAnnotation | null;
+  lastNotification: LiveNotification | null;
 }
 
 const BATCH_INTERVAL = 200; // ms — flush buffered events every 200ms
@@ -77,6 +89,7 @@ export function useSocket(teamId: string): UseSocketReturn {
   const [incidentVersion, setIncidentVersion] = useState(0);
   const [lastAnnotation, setLastAnnotation] = useState<LiveAnnotation | null>(null);
   const [timelineCursors, setTimelineCursors] = useState<Map<string, TimelineCursorData>>(new Map());
+  const [lastNotification, setLastNotification] = useState<LiveNotification | null>(null);
 
   // ─── Event batching buffer ───
   const eventBufferRef = useRef<LiveEvent[]>([]);
@@ -272,6 +285,12 @@ export function useSocket(teamId: string): UseSocketReturn {
       });
     });
 
+    // ─── In-app notifications ───
+    socket.on('notification', (data: LiveNotification) => {
+      console.log('🔔 notification received:', data);
+      setLastNotification(data);
+    });
+
     // Cleanup
     return () => {
       if (batchTimerRef.current) {
@@ -329,5 +348,5 @@ export function useSocket(teamId: string): UseSocketReturn {
     return () => clearInterval(interval);
   }, []);
 
-  return { status, viewers, cursors, sendCursorMove, sendTimelineCursor, timelineCursors, lastEvent, eventBatch, metricsVersion, incidentVersion, lastAnnotation };
+  return { status, viewers, cursors, sendCursorMove, sendTimelineCursor, timelineCursors, lastEvent, eventBatch, metricsVersion, incidentVersion, lastAnnotation, lastNotification };
 }
