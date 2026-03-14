@@ -10,8 +10,7 @@
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
 ![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat&logo=d3.js&logoColor=white)
 
-<!-- Replace with actual screenshot or GIF -->
-<!-- ![Dashboard Screenshot](./docs/screenshot.png) -->
+![Dashboard Screenshot](./docs/ReadmePager.png)
 
 ---
 
