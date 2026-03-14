@@ -20,7 +20,8 @@ router.post('/start', async (req: Request, res: Response) => {
       return res.json({ status: 'already_running' });
     }
 
-    startDemoMode(teamId, req.body.interval || 4000);
+    const io = req.app.get('io');
+    startDemoMode(teamId, teamSlug, io, req.body.interval || 4000);
     res.json({ status: 'started' });
   } catch (error) {
     console.error('Error starting demo:', error);
@@ -42,7 +43,7 @@ router.post('/incident', async (req: Request, res: Response) => {
     if (!teamId) return res.status(404).json({ error: 'Team not found' });
 
     const io = req.app.get('io');
-    simulateIncidentLifecycle(teamId, io);
+    simulateIncidentLifecycle(teamId, teamSlug, io);
     res.json({ status: 'incident_simulation_started' });
   } catch (error) {
     console.error('Error simulating incident:', error);

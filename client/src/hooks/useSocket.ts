@@ -214,7 +214,7 @@ export function useSocket(teamId: string): UseSocketReturn {
       });
     });
 
-    // ─── Live data events with BATCHING ───
+    // ─── Live data events ───
     socket.on('new_event', (event: any) => {
       console.log('🔥 new_event received in hook:', event);
 
@@ -230,19 +230,17 @@ export function useSocket(teamId: string): UseSocketReturn {
       // Track last received time for reconnect recovery
       lastEventTimeRef.current = normalized.occurredAt;
 
-      // Buffer the event instead of setting state immediately
-      eventBufferRef.current.push(normalized);
+      // Set lastEvent IMMEDIATELY so consumers react right away
+      setLastEvent(normalized);
 
-      // Start a flush timer if one isn't already running
+      // Also batch for bulk consumers
+      eventBufferRef.current.push(normalized);
       if (!batchTimerRef.current) {
         batchTimerRef.current = setTimeout(() => {
           batchTimerRef.current = null;
-          // Flush all buffered events at once
           const batch = [...eventBufferRef.current];
           eventBufferRef.current = [];
-
           if (batch.length > 0) {
-            setLastEvent(batch[batch.length - 1]);
             setEventBatch(batch);
           }
         }, BATCH_INTERVAL);

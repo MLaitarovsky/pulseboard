@@ -59,7 +59,7 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { lastEvent, eventBatch } = useSocketContext();
+  const { lastEvent } = useSocketContext();
 
   // ─── "New events" banner state ───
   const [pendingEvents, setPendingEvents] = useState<EventItem[]>([]);
@@ -89,50 +89,17 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-    // Consider "scrolled down" if more than 60px from the top
     setIsScrolledDown(container.scrollTop > 60);
   }, []);
 
-  // ─── React to live event batches ───
+  // ─── React to live events from socket ───
+  const lastProcessedRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!eventBatch || eventBatch.length === 0) return;
-
-    const newItems: EventItem[] = eventBatch.map((e) => ({
-      id: e.id,
-      source: e.source as any,
-      event_type: e.eventType,
-      title: e.title,
-      severity: e.severity as any,
-      occurred_at: e.occurredAt,
-      isNew: true,
-    }));
-
-    if (isScrolledDown) {
-      // User has scrolled down — buffer events and show banner
-      setPendingEvents((prev) => [...newItems, ...prev]);
-    } else {
-      // User is at top — prepend immediately
-      setEvents((prev) => {
-        const updated = [...newItems, ...prev].slice(0, limit);
-        return updated;
-      });
-
-      // Remove highlight after 3 seconds
-      const ids = newItems.map((e) => e.id);
-      setTimeout(() => {
-        setEvents((prev) =>
-          prev.map((e) =>
-            ids.includes(e.id) ? { ...e, isNew: false } : e
-          )
-        );
-      }, 3000);
-    }
-  }, [eventBatch, isScrolledDown, limit]);
-
-  // Fallback: also react to single lastEvent for components that only send one at a time
-  // (This catches events that come through without batching)
-  useEffect(() => {
-    if (!lastEvent || (eventBatch && eventBatch.length > 0)) return;
+    if (!lastEvent) return;
+    // Deduplicate — don't process the same event twice
+    if (lastProcessedRef.current === lastEvent.id) return;
+    lastProcessedRef.current = lastEvent.id;
 
     const newItem: EventItem = {
       id: lastEvent.id,
@@ -148,13 +115,16 @@ export default function EventsFeed({ limit = 20 }: { limit?: number }) {
       setPendingEvents((prev) => [newItem, ...prev]);
     } else {
       setEvents((prev) => [newItem, ...prev].slice(0, limit));
+
+      // Remove highlight after 3 seconds
+      const id = newItem.id;
       setTimeout(() => {
         setEvents((prev) =>
-          prev.map((e) => e.id === newItem.id ? { ...e, isNew: false } : e)
+          prev.map((e) => e.id === id ? { ...e, isNew: false } : e)
         );
       }, 3000);
     }
-  }, [lastEvent]);
+  }, [lastEvent, isScrolledDown, limit]);
 
   // ─── Show pending events (click banner) ───
   function showPendingEvents() {

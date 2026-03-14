@@ -197,9 +197,10 @@ export default function TimelineChart() {
     const xScale = d3.scaleTime().domain([start, now]).range([0, width]);
     xScaleRef.current = xScale;
 
-    // Source lanes (y positions)
+    // Source lanes (y positions) — reserve bottom 30% for incidents
     const sources = ['github', 'sentry', 'uptime'] as const;
-    const laneHeight = (height - 50) / 3;
+    const incidentReserve = Math.max(80, height * 0.28);
+    const laneHeight = (height - incidentReserve) / 3;
     const yLane = (source: string) => {
       const idx = sources.indexOf(source as any);
       return idx >= 0 ? margin.top + idx * laneHeight + laneHeight / 2 : margin.top + height / 2;
@@ -210,7 +211,7 @@ export default function TimelineChart() {
       .append('g')
       .attr('transform', `translate(${margin.left},0)`);
 
-    // Clip path
+    // Clip path — stops at the x-axis so nothing renders below it
     svg.append('defs')
       .append('clipPath')
       .attr('id', 'timeline-clip')
@@ -218,7 +219,7 @@ export default function TimelineChart() {
       .attr('x', 0)
       .attr('y', 0)
       .attr('width', width)
-      .attr('height', height + margin.top + margin.bottom);
+      .attr('height', height + margin.top);
 
     const chartArea = g.append('g').attr('clip-path', 'url(#timeline-clip)');
 
@@ -258,6 +259,7 @@ export default function TimelineChart() {
 
     // --- Incident bars (bottom lane) ---
     const incidentY = margin.top + 3 * laneHeight + 8;
+    const availableIncidentHeight = (height + margin.top) - incidentY - 5; // 5px padding above axis
     const timelineIncidents = incidents.filter((inc) => {
       const created = new Date(inc.created_at);
       const resolved = inc.resolved_at ? new Date(inc.resolved_at) : now;
@@ -275,8 +277,9 @@ export default function TimelineChart() {
       .text('INCIDENTS');
 
     // ─── Stagger overlapping incident bars vertically ───
-    const barHeight = 20;
-    const barGap = 3;
+    const barHeight = 22;
+    const barGap = 4;
+    const maxRows = Math.max(1, Math.floor(availableIncidentHeight / (barHeight + barGap)));
     const barRows: { x1: number; x2: number; row: number }[] = [];
 
     // Sort by start time so we assign rows left-to-right
@@ -291,7 +294,7 @@ export default function TimelineChart() {
       const x2 = Math.min(width, xScale(inc.resolved_at ? new Date(inc.resolved_at) : now));
 
       let assignedRow = 0;
-      for (let row = 0; row < 5; row++) {
+      for (let row = 0; row < maxRows; row++) {
         const overlaps = barRows.some(
           (b) => b.row === row && !(x2 < b.x1 || x1 > b.x2)
         );
@@ -299,7 +302,7 @@ export default function TimelineChart() {
           assignedRow = row;
           break;
         }
-        assignedRow = row + 1;
+        assignedRow = Math.min(row + 1, maxRows - 1);
       }
 
       barRows.push({ x1, x2, row: assignedRow });
@@ -334,7 +337,7 @@ export default function TimelineChart() {
         const label = d.title.length > maxChars ? d.title.substring(0, maxChars) + '\u2026' : d.title;
         group.append('text')
           .attr('x', x1 + 8)
-          .attr('y', yOffset + 13)
+          .attr('y', yOffset + 15)
           .attr('fill', 'white')
           .attr('font-size', '8px')
           .attr('font-family', 'monospace')
@@ -657,7 +660,7 @@ export default function TimelineChart() {
             const label = d.title.length > maxChars ? d.title.substring(0, maxChars) + '\u2026' : d.title;
             if (text.empty()) {
               group.append('text')
-                .attr('x', x1 + 8).attr('y', yOffset + 13)
+                .attr('x', x1 + 8).attr('y', yOffset + 15)
                 .attr('fill', 'white').attr('font-size', '8px').attr('font-family', 'monospace')
                 .text(label);
             } else {
@@ -927,8 +930,8 @@ export default function TimelineChart() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-3 shrink-0">
           <h2 className="text-sm font-semibold text-text-primary">Activity Timeline</h2>
           <div className="flex items-center gap-4 ml-4">
             {(['github', 'sentry', 'uptime'] as const).map((source) => (
@@ -939,7 +942,7 @@ export default function TimelineChart() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {(['6h', '24h', '7d', '30d'] as const).map((r) => (
             <button
               key={r}
