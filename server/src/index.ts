@@ -15,6 +15,7 @@ import webhooksRouter from "./routes/webhooks";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import annotationsRouter from "./routes/annotations";
 import notificationsRouter from "./routes/notifications";
+import demoRouter from './routes/demo';
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use("/api/webhooks", webhooksRouter);
 app.use("/api/teams", annotationsRouter);
 app.use("/api/teams", notificationsRouter);
 app.set("io", io);
+app.use('/api/demo', demoRouter);
 
 // --------------- Error Handling ---------------
 app.use(notFoundHandler);
@@ -52,9 +54,6 @@ async function start() {
   try {
     await runMigrations();
     await seedDatabase();
-
-    // Initialize Socket.IO (attaches to the HTTP server)
-    const io = initializeSocket(server);
 
     server.listen(PORT, () => {
       console.log(`
@@ -77,6 +76,8 @@ async function start() {
   }
 }
 
-start();
+if (!process.env.VITEST) {
+  start();
+}
 
 export { app, server };

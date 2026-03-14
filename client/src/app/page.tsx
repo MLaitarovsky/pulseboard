@@ -14,6 +14,7 @@ import EventsFeed from "@/components/EventsFeed";
 import TimelineChart from "@/components/TimelineChart";
 import PresencePanel from "@/components/PresencePanel";
 import { useSocketContext } from "@/components/SocketProvider";
+import DemoControls from "@/components/DemoControls";
 
 const TEAM_ID = "acme-eng";
 
@@ -179,6 +180,7 @@ export default function Dashboard() {
             Real-time overview of your system health and activity
           </p>
         </div>
+        <DemoControls />
         <PresencePanel />
       </div>
 
