@@ -8,6 +8,9 @@ import NotificationToasts from "@/components/NotificationToasts";
 export const metadata: Metadata = {
   title: "PulseBoard — Live Team Metrics & Incident Dashboard",
   description: "Real-time operational dashboard for engineering teams",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
