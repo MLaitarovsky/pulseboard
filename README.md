@@ -32,12 +32,12 @@ PulseBoard is a full-stack monitoring dashboard where teams can:
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                          Client (Next.js 14)                     │
-│  ┌─────────┐  ┌───────────┐  ┌──────────┐  ┌────────────────┐  │
-│  │Dashboard │  │ Incidents │  │ Events   │  │   Settings     │  │
-│  │ Metrics  │  │ Timeline  │  │ Feed     │  │ Webhook Config │  │
-│  │ D3 Chart │  │ State Mgr │  │ Live     │  │ Notif Log      │  │
-│  └────┬─────┘  └────┬──────┘  └────┬─────┘  └────────────────┘  │
-│       │              │              │                             │
+│  ┌──────────┐  ┌───────────┐  ┌──────────┐  ┌────────────────┐   │
+│  │Dashboard │  │ Incidents │  │ Events   │  │   Settings     │   │
+│  │ Metrics  │  │ Timeline  │  │ Feed     │  │ Webhook Config │   │
+│  │ D3 Chart │  │ State Mgr │  │ Live     │  │ Notif Log      │   │
+│  └────┬─────┘  └─────┬──────┘ └─────┬────┘  └────────────────┘   │
+│       │              │              │                            │
 │  ┌────┴──────────────┴──────────────┴───┐                        │
 │  │  SocketProvider (useSocket hook)     │  ← WebSocket           │
 │  │  • Event batching (200ms buffer)     │                        │
@@ -48,7 +48,7 @@ PulseBoard is a full-stack monitoring dashboard where teams can:
 └─────────────────────┼────────────────────────────────────────────┘
                       │ WebSocket + REST API
 ┌─────────────────────┼────────────────────────────────────────────┐
-│                     │       Server (Express + Socket.IO)          │
+│                     │       Server (Express + Socket.IO)         │
 │  ┌──────────────────┴───────────────────┐                        │
 │  │  Socket.IO Server                    │                        │
 │  │  • Team rooms + presence             │                        │
@@ -56,13 +56,13 @@ PulseBoard is a full-stack monitoring dashboard where teams can:
 │  │  • Cursor relay + Timeline cursors   │                        │
 │  └──────────────────┬───────────────────┘                        │
 │                     │                                            │
-│  ┌──────────┐  ┌────┴──────┐  ┌────────────┐  ┌──────────────┐  │
-│  │ REST API │  │ Webhooks  │  │ Normalizer │  │ Notification │  │
-│  │ Metrics  │  │ Receiver  │→ │ GitHub     │  │ Service      │  │
-│  │ Events   │  │ /webhooks │  │ Sentry     │  │ In-app toast │  │
-│  │Incidents │  │ /:source  │  │ Uptime     │  │ Webhook POST │  │
-│  │Annotate  │  └───────────┘  └────────────┘  │ HMAC signing │  │
-│  └──────────┘                                  └──────────────┘  │
+│  ┌──────────┐  ┌────┴──────┐  ┌────────────┐  ┌──────────────┐   │
+│  │ REST API │  │ Webhooks  │  │ Normalizer │  │ Notification │   │ 
+│  │ Metrics  │  │ Receiver  │→ │ GitHub     │  │ Service      │   │
+│  │ Events   │  │ /webhooks │  │ Sentry     │  │ In-app toast │   │
+│  │Incidents │  │ /:source  │  │ Uptime     │  │ Webhook POST │   │
+│  │Annotate  │  └───────────┘  └────────────┘  │ HMAC signing │   │
+│  └──────────┘                                 └──────────────┘   │
 │                                                                  │
 │  ┌────────────────────────────┬──────────────────────────┐       │
 │  │      PostgreSQL            │         Redis            │       │
