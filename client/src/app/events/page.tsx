@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Github, Bug, Wifi, Radio, Filter } from 'lucide-react';
 import { clsx } from 'clsx';
-
-const TEAM_ID = 'acme-eng';
+import { useTeamId } from '@/components/TeamProvider';
 
 interface EventItem {
   id: string;
@@ -50,6 +49,7 @@ function formatDate(dateStr: string): string {
 type SourceFilter = 'all' | 'github' | 'sentry' | 'uptime';
 
 export default function EventsPage() {
+  const TEAM_ID = useTeamId();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { Play, Square, Zap, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useTeamId } from './TeamProvider';
 
 export default function DemoControls() {
+  const teamId = useTeamId();
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [incidentLoading, setIncidentLoading] = useState(false);
@@ -23,7 +25,7 @@ export default function DemoControls() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId: 'acme-eng' }),
+        body: JSON.stringify({ teamId }),
       });
       if (res.ok) setRunning(!running);
     } catch (err) {
@@ -39,7 +41,7 @@ export default function DemoControls() {
       await fetch('/api/demo/incident', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId: 'acme-eng' }),
+        body: JSON.stringify({ teamId }),
       });
     } catch (err) {
       console.error('Incident simulation failed:', err);

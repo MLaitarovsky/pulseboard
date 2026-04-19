@@ -10,8 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-
-const TEAM_ID = 'acme-eng';
+import { useTeamId } from '@/components/TeamProvider';
 
 interface Incident {
   id: string;
@@ -65,6 +64,7 @@ function duration(from: string, to: string | null): string {
 }
 
 export default function IncidentsPage() {
+  const TEAM_ID = useTeamId();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>('all');

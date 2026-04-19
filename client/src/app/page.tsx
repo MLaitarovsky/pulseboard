@@ -15,8 +15,7 @@ import TimelineChart from "@/components/TimelineChart";
 import PresencePanel from "@/components/PresencePanel";
 import { useSocketContext } from "@/components/SocketProvider";
 import DemoControls from "@/components/DemoControls";
-
-const TEAM_ID = "acme-eng";
+import { useTeamId } from "@/components/TeamProvider";
 
 interface MetricsSnapshot {
   uptime: number;
@@ -107,6 +106,7 @@ function MetricCard({
 }
 
 export default function Dashboard() {
+  const TEAM_ID = useTeamId();
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [incidents, setIncidents] = useState<IncidentSummary>({
     open: 0,

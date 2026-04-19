@@ -13,6 +13,7 @@ import eventsRouter from "./routes/events";
 import incidentsRouter from "./routes/incidents";
 import webhooksRouter from "./routes/webhooks";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { apiKeyAuth } from "./middleware/auth";
 import annotationsRouter from "./routes/annotations";
 import notificationsRouter from "./routes/notifications";
 import demoRouter from './routes/demo';
@@ -32,6 +33,7 @@ app.use(
   }),
 );
 app.use(express.json());
+app.use(apiKeyAuth);
 
 // --------------- Routes ---------------
 app.use("/api/health", healthRouter);

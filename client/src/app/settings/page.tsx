@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react';
 import {
   Settings, Plus, Trash2, TestTube, CheckCircle, XCircle,
-  ExternalLink, Bell, Globe, ToggleLeft, ToggleRight, Loader2,
+  ExternalLink, Bell, Globe, ToggleLeft, ToggleRight, Loader2, Copy, Check, RotateCcw,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-
-const TEAM_ID = 'acme-eng';
+import { useTeamId } from '@/components/TeamProvider';
+import { useToast } from '@/components/ToastProvider';
+import { useSocketContext } from '@/components/SocketProvider';
+import { authHeaders } from '@/lib/api';
 
 interface WebhookConfig {
   id: string;
@@ -41,12 +43,18 @@ const ALL_EVENTS = [
 ];
 
 export default function SettingsPage() {
+  const TEAM_ID = useTeamId();
+  const { toast } = useToast();
+  const { webhookVersion } = useSocketContext();
   const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
   const [notifications, setNotifications] = useState<NotificationLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [notifPage, setNotifPage] = useState(0);
+  const [notifTotal, setNotifTotal] = useState(0);
+  const NOTIF_LIMIT = 20;
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -54,15 +62,22 @@ export default function SettingsPage() {
   const [formSecret, setFormSecret] = useState('');
   const [formEvents, setFormEvents] = useState<string[]>(['incident_created', 'incident_resolved', 'incident_escalated']);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
 
-  async function fetchData() {
+  async function fetchData(page = notifPage) {
     try {
       const [webhooksRes, logsRes] = await Promise.all([
-        fetch(`/api/teams/${TEAM_ID}/webhooks`),
-        fetch(`/api/teams/${TEAM_ID}/notifications?limit=30`),
+        fetch(`/api/teams/${TEAM_ID}/webhooks`, { headers: authHeaders() }),
+        fetch(`/api/teams/${TEAM_ID}/notifications?limit=${NOTIF_LIMIT}&offset=${page * NOTIF_LIMIT}`, { headers: authHeaders() }),
       ]);
       if (webhooksRes.ok) setWebhooks(await webhooksRes.json());
-      if (logsRes.ok) setNotifications(await logsRes.json());
+      if (logsRes.ok) {
+        const data = await logsRes.json();
+        setNotifications(data.notifications ?? data);
+        setNotifTotal(data.total ?? 0);
+      }
     } catch (err) {
       console.error('Failed to fetch settings data:', err);
     } finally {
@@ -70,24 +85,48 @@ export default function SettingsPage() {
     }
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(notifPage); }, [notifPage]);
+
+  // Re-sync webhook list when another session creates/updates/deletes a webhook
+  useEffect(() => {
+    if (webhookVersion === 0) return; // skip initial mount
+    fetchData(notifPage);
+  }, [webhookVersion]);
+
+  function isValidUrl(url: string) {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
 
   async function createWebhook() {
     if (!formName.trim() || !formUrl.trim()) return;
+    if (!isValidUrl(formUrl)) {
+      setSaveError('Webhook URL must be a valid https:// address.');
+      return;
+    }
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/teams/${TEAM_ID}/webhooks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ name: formName, url: formUrl, secret: formSecret || undefined, events: formEvents }),
       });
       if (res.ok) {
         setFormName(''); setFormUrl(''); setFormSecret(''); setShowAddForm(false);
         setFormEvents(['incident_created', 'incident_resolved', 'incident_escalated']);
         await fetchData();
+        toast('Webhook created');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSaveError(data.error || `Server error (${res.status})`);
       }
     } catch (err) {
-      console.error('Failed to create webhook:', err);
+      setSaveError('Network error — is the server running?');
     } finally {
       setSaving(false);
     }
@@ -95,23 +134,33 @@ export default function SettingsPage() {
 
   async function toggleWebhook(id: string, enabled: boolean) {
     try {
-      await fetch(`/api/teams/${TEAM_ID}/webhooks/${id}`, {
+      const res = await fetch(`/api/teams/${TEAM_ID}/webhooks/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ enabled }),
       });
-      setWebhooks((prev) => prev.map((w) => w.id === id ? { ...w, enabled } : w));
-    } catch (err) {
-      console.error('Failed to toggle webhook:', err);
+      if (res.ok) {
+        setWebhooks((prev) => prev.map((w) => w.id === id ? { ...w, enabled } : w));
+        toast(enabled ? 'Webhook enabled' : 'Webhook disabled');
+      } else {
+        toast('Failed to update webhook', 'error');
+      }
+    } catch {
+      toast('Network error', 'error');
     }
   }
 
   async function deleteWebhook(id: string) {
     try {
-      await fetch(`/api/teams/${TEAM_ID}/webhooks/${id}`, { method: 'DELETE' });
-      setWebhooks((prev) => prev.filter((w) => w.id !== id));
-    } catch (err) {
-      console.error('Failed to delete webhook:', err);
+      const res = await fetch(`/api/teams/${TEAM_ID}/webhooks/${id}`, { method: 'DELETE', headers: authHeaders() });
+      if (res.ok) {
+        setWebhooks((prev) => prev.filter((w) => w.id !== id));
+        toast('Webhook deleted');
+      } else {
+        toast('Failed to delete webhook', 'error');
+      }
+    } catch {
+      toast('Network error', 'error');
     }
   }
 
@@ -119,7 +168,7 @@ export default function SettingsPage() {
     setTesting(id);
     setTestResult(null);
     try {
-      const res = await fetch(`/api/teams/${TEAM_ID}/webhooks/${id}/test`, { method: 'POST' });
+      const res = await fetch(`/api/teams/${TEAM_ID}/webhooks/${id}/test`, { method: 'POST', headers: authHeaders() });
       const data = await res.json();
       setTestResult({ id, success: data.success, message: data.success ? `${data.status} ${data.statusText}` : data.error || 'Failed' });
     } catch (err) {
@@ -135,11 +184,80 @@ export default function SettingsPage() {
     );
   }
 
+  async function retryNotification(id: string) {
+    setRetrying(id);
+    try {
+      const res = await fetch(`/api/teams/${TEAM_ID}/notifications/${id}/retry`, { method: 'POST', headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        toast('Notification delivered');
+      } else {
+        toast('Retry failed — check recipient URL', 'error');
+      }
+      await fetchData();
+    } catch {
+      toast('Network error', 'error');
+    } finally {
+      setRetrying(null);
+    }
+  }
+
+  function copyToClipboard(text: string, key: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }
+
+  const baseUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.host}`
+    : '';
+
+  const inboundEndpoints = [
+    { source: 'github',  label: 'GitHub',  description: 'Push, PR, deployment events' },
+    { source: 'sentry',  label: 'Sentry',  description: 'Error and issue alerts' },
+    { source: 'uptime',  label: 'Uptime',  description: 'Monitor up/down events' },
+  ];
+
   return (
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-text-primary tracking-tight">Settings</h1>
         <p className="text-sm text-text-dim mt-1">Configure webhook endpoints, notification channels, and integrations</p>
+      </div>
+
+      {/* ─── Inbound Webhook URLs ─── */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <ExternalLink className="w-4 h-4 text-accent-blue" />
+          <h2 className="text-sm font-semibold text-text-primary">Receive Events</h2>
+          <span className="text-[10px] font-mono text-text-dim bg-surface-2 px-2 py-0.5 rounded">Inbound</span>
+        </div>
+        <p className="text-xs text-text-dim mb-4">Paste these URLs into your external services to send events to PulseBoard.</p>
+        <div className="space-y-2">
+          {inboundEndpoints.map(({ source, label, description }) => {
+            const url = `${baseUrl}/api/webhooks/${source}?team=${TEAM_ID}`;
+            const key = `inbound-${source}`;
+            return (
+              <div key={source} className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-16 shrink-0">
+                  <span className="text-[10px] font-mono font-semibold text-text-primary">{label}</span>
+                  <p className="text-[9px] text-text-dim/70 mt-0.5">{description}</p>
+                </div>
+                <code className="flex-1 text-xs font-mono text-text-dim bg-surface-2 px-3 py-1.5 rounded-lg truncate">
+                  {url}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(url, key)}
+                  className="p-1.5 rounded-lg text-text-dim hover:text-accent-blue hover:bg-accent-blue/10 transition-colors shrink-0"
+                  title="Copy URL"
+                >
+                  {copied === key ? <Check className="w-3.5 h-3.5 text-accent-green" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ─── Webhook Configurations ─── */}
@@ -173,10 +291,16 @@ export default function SettingsPage() {
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-wider text-text-dim block mb-1.5">Webhook URL</label>
                 <input
-                  type="url" value={formUrl} onChange={(e) => setFormUrl(e.target.value)}
+                  type="url" value={formUrl} onChange={(e) => { setFormUrl(e.target.value); setSaveError(null); }}
                   placeholder="https://hooks.slack.com/services/..."
-                  className="w-full px-3 py-2 rounded-lg text-sm bg-surface-2 border border-border text-text-primary outline-none focus:border-accent-green/40"
+                  className={clsx(
+                    'w-full px-3 py-2 rounded-lg text-sm bg-surface-2 border text-text-primary outline-none focus:border-accent-green/40',
+                    formUrl && !isValidUrl(formUrl) ? 'border-accent-red/50' : 'border-border'
+                  )}
                 />
+                {formUrl && !isValidUrl(formUrl) && (
+                  <p className="text-[10px] text-accent-red mt-1">Must be a valid https:// URL</p>
+                )}
               </div>
             </div>
             <div>
@@ -206,13 +330,16 @@ export default function SettingsPage() {
                 ))}
               </div>
             </div>
+            {saveError && (
+              <p className="text-xs text-accent-red bg-accent-red/10 border border-accent-red/20 rounded-lg px-3 py-2">{saveError}</p>
+            )}
             <div className="flex items-center justify-end gap-2 pt-2">
-              <button onClick={() => setShowAddForm(false)} className="px-3 py-1.5 rounded-lg text-xs text-text-dim hover:text-text-primary transition-colors">
+              <button onClick={() => { setShowAddForm(false); setSaveError(null); }} className="px-3 py-1.5 rounded-lg text-xs text-text-dim hover:text-text-primary transition-colors">
                 Cancel
               </button>
               <button
                 onClick={createWebhook}
-                disabled={!formName.trim() || !formUrl.trim() || saving}
+                disabled={!formName.trim() || !formUrl.trim() || !isValidUrl(formUrl) || saving}
                 className="px-4 py-1.5 rounded-lg text-xs font-medium bg-accent-green/15 text-accent-green border border-accent-green/30 hover:bg-accent-green/25 disabled:opacity-50 transition-colors"
               >
                 {saving ? 'Saving...' : 'Create Webhook'}
@@ -309,7 +436,9 @@ export default function SettingsPage() {
         <div className="flex items-center gap-2 mb-4">
           <Bell className="w-4 h-4 text-accent-yellow" />
           <h2 className="text-sm font-semibold text-text-primary">Notification Log</h2>
-          <span className="text-[10px] font-mono text-text-dim bg-surface-2 px-2 py-0.5 rounded">Last 30</span>
+          {notifTotal > 0 && (
+            <span className="text-[10px] font-mono text-text-dim bg-surface-2 px-2 py-0.5 rounded">{notifTotal} total</span>
+          )}
         </div>
 
         {notifications.length === 0 ? (
@@ -339,19 +468,57 @@ export default function SettingsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <span className={clsx(
-                      'text-[9px] font-mono uppercase px-1.5 py-0.5 rounded',
-                      notif.status === 'sent' ? 'bg-accent-green/10 text-accent-green' : 'bg-accent-red/10 text-accent-red'
-                    )}>
-                      {notif.status}
-                    </span>
-                    <p className="text-[9px] font-mono text-text-dim/40 mt-1">
-                      {new Date(notif.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {notif.status === 'failed' && notif.channel === 'webhook' && (
+                      <button
+                        onClick={() => retryNotification(notif.id)}
+                        disabled={retrying === notif.id}
+                        className="p-1.5 rounded-lg text-text-dim hover:text-accent-yellow hover:bg-accent-yellow/10 transition-colors"
+                        title="Retry delivery"
+                      >
+                        {retrying === notif.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <RotateCcw className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                    <div className="text-right">
+                      <span className={clsx(
+                        'text-[9px] font-mono uppercase px-1.5 py-0.5 rounded',
+                        notif.status === 'sent' ? 'bg-accent-green/10 text-accent-green' : 'bg-accent-red/10 text-accent-red'
+                      )}>
+                        {notif.status}
+                      </span>
+                      <p className="text-[9px] font-mono text-text-dim/40 mt-1">
+                        {new Date(notif.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {notifTotal > NOTIF_LIMIT && (
+          <div className="flex items-center justify-between mt-3 px-1">
+            <span className="text-[10px] font-mono text-text-dim">
+              {notifPage * NOTIF_LIMIT + 1}–{Math.min((notifPage + 1) * NOTIF_LIMIT, notifTotal)} of {notifTotal}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setNotifPage((p) => Math.max(0, p - 1))}
+                disabled={notifPage === 0}
+                className="px-3 py-1.5 rounded-lg text-xs font-mono text-text-dim border border-border hover:text-text-primary hover:border-border/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={() => setNotifPage((p) => p + 1)}
+                disabled={(notifPage + 1) * NOTIF_LIMIT >= notifTotal}
+                className="px-3 py-1.5 rounded-lg text-xs font-mono text-text-dim border border-border hover:text-text-primary hover:border-border/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Next →
+              </button>
             </div>
           </div>
         )}

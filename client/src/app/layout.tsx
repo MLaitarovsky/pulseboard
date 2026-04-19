@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { SocketProvider } from "@/components/SocketProvider";
+import { TeamProvider } from "@/components/TeamProvider";
+import { ToastProvider } from "@/components/ToastProvider";
 import CursorOverlay from "@/components/CursorOverlay";
 import NotificationToasts from "@/components/NotificationToasts";
 
@@ -18,16 +20,20 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <SocketProvider teamId="acme-eng">
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 ml-60">
-              <div className="p-6 max-w-[1400px] mx-auto">{children}</div>
-            </main>
-          </div>
-          <CursorOverlay />
-          <NotificationToasts />
-        </SocketProvider>
+        <TeamProvider>
+          <ToastProvider>
+          <SocketProvider>
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <main className="flex-1 ml-60">
+                <div className="p-6 max-w-[1400px] mx-auto">{children}</div>
+              </main>
+            </div>
+            <CursorOverlay />
+            <NotificationToasts />
+          </SocketProvider>
+          </ToastProvider>
+        </TeamProvider>
       </body>
     </html>
   );

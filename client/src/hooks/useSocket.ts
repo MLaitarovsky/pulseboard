@@ -72,6 +72,7 @@ interface UseSocketReturn {
   eventBatch: LiveEvent[];
   metricsVersion: number;
   incidentVersion: number;
+  webhookVersion: number;
   lastAnnotation: LiveAnnotation | null;
   lastNotification: LiveNotification | null;
 }
@@ -90,6 +91,7 @@ export function useSocket(teamId: string): UseSocketReturn {
   const [lastAnnotation, setLastAnnotation] = useState<LiveAnnotation | null>(null);
   const [timelineCursors, setTimelineCursors] = useState<Map<string, TimelineCursorData>>(new Map());
   const [lastNotification, setLastNotification] = useState<LiveNotification | null>(null);
+  const [webhookVersion, setWebhookVersion] = useState(0);
 
   // ─── Event batching buffer ───
   const eventBufferRef = useRef<LiveEvent[]>([]);
@@ -289,6 +291,11 @@ export function useSocket(teamId: string): UseSocketReturn {
       setLastNotification(data);
     });
 
+    // ─── Webhook config changes ───
+    socket.on('webhook_update', () => {
+      setWebhookVersion((v) => v + 1);
+    });
+
     // Cleanup
     return () => {
       if (batchTimerRef.current) {
@@ -346,5 +353,5 @@ export function useSocket(teamId: string): UseSocketReturn {
     return () => clearInterval(interval);
   }, []);
 
-  return { status, viewers, cursors, sendCursorMove, sendTimelineCursor, timelineCursors, lastEvent, eventBatch, metricsVersion, incidentVersion, lastAnnotation, lastNotification };
+  return { status, viewers, cursors, sendCursorMove, sendTimelineCursor, timelineCursors, lastEvent, eventBatch, metricsVersion, incidentVersion, webhookVersion, lastAnnotation, lastNotification };
 }

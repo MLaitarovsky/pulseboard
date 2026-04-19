@@ -89,6 +89,40 @@ const schema = `
 
   CREATE INDEX IF NOT EXISTS idx_annotations_team
     ON annotations (team_id, timestamp_target);
+
+  -- Webhook configurations per team
+  CREATE TABLE IF NOT EXISTS webhook_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    url VARCHAR(2000) NOT NULL,
+    events TEXT[] NOT NULL DEFAULT '{"incident_created","incident_resolved","incident_escalated"}',
+    enabled BOOLEAN DEFAULT true,
+    secret VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_webhook_configs_team
+    ON webhook_configs (team_id, enabled);
+
+  -- Notification delivery log
+  CREATE TABLE IF NOT EXISTS notification_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    channel VARCHAR(50) NOT NULL,
+    recipient VARCHAR(500),
+    subject VARCHAR(500),
+    body TEXT,
+    metadata JSONB DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'sent',
+    error TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_notification_log_team
+    ON notification_log (team_id, created_at DESC);
 `;
 
 export async function runMigrations(): Promise<void> {

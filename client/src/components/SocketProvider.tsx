@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useSocket, ConnectionStatus, LiveEvent, LiveAnnotation, TimelineCursorData, LiveNotification } from '@/hooks/useSocket';
+import { useTeamId } from '@/components/TeamProvider';
 
 interface PresenceUser {
   userId: string;
@@ -31,19 +32,15 @@ interface SocketContextValue {
   eventBatch: LiveEvent[];
   metricsVersion: number;
   incidentVersion: number;
+  webhookVersion: number;
   lastAnnotation: LiveAnnotation | null;
   lastNotification: LiveNotification | null;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
-export function SocketProvider({
-  teamId,
-  children,
-}: {
-  teamId: string;
-  children: ReactNode;
-}) {
+export function SocketProvider({ children }: { children: ReactNode }) {
+  const teamId = useTeamId();
   const socket = useSocket(teamId);
 
   return (

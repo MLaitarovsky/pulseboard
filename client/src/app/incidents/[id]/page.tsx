@@ -8,8 +8,7 @@ import {
   RotateCcw, MessageSquare, ChevronUp, ChevronDown, FileText,
   Send, Copy, Shield, X,
 } from 'lucide-react';
-
-const TEAM_ID = 'acme-eng';
+import { useTeamId } from '@/components/TeamProvider';
 
 interface Incident {
   id: string; title: string; description: string;
@@ -316,6 +315,7 @@ function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => 
 
 // ─── Main Page ──────────────────────────────────────
 export default function IncidentDetailPage() {
+  const TEAM_ID = useTeamId();
   const params = useParams();
   const incidentId = params.id as string;
 

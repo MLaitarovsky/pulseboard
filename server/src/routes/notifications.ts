@@ -47,6 +47,7 @@ router.post('/:teamId/webhooks', async (req: Request, res: Response) => {
     ]);
 
     console.log(`🔗 Webhook config created: ${name} → ${url}`);
+    req.app.get('io')?.to(`team:${teamId}`).emit('webhook_update', { action: 'created' });
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error creating webhook config:', error);
@@ -89,6 +90,7 @@ router.patch('/:teamId/webhooks/:webhookId', async (req: Request, res: Response)
       return res.status(404).json({ error: 'Webhook config not found' });
     }
 
+    req.app.get('io')?.to(`team:${teamId}`).emit('webhook_update', { action: 'updated' });
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating webhook config:', error);
@@ -111,6 +113,7 @@ router.delete('/:teamId/webhooks/:webhookId', async (req: Request, res: Response
       return res.status(404).json({ error: 'Webhook config not found' });
     }
 
+    req.app.get('io')?.to(`team:${teamId}`).emit('webhook_update', { action: 'deleted' });
     res.json({ deleted: true });
   } catch (error) {
     console.error('Error deleting webhook config:', error);
@@ -163,20 +166,100 @@ router.post('/:teamId/webhooks/:webhookId/test', async (req: Request, res: Respo
   }
 });
 
+// POST /api/teams/:teamId/notifications/:notifId/retry — retry a failed delivery
+router.post('/:teamId/notifications/:notifId/retry', async (req: Request, res: Response) => {
+  try {
+    const teamId = await resolveTeamId(req.params.teamId);
+    if (!teamId) return res.status(404).json({ error: 'Team not found' });
+
+    const logResult = await pool.query(
+      'SELECT * FROM notification_log WHERE id = $1 AND team_id = $2',
+      [req.params.notifId, teamId]
+    );
+
+    if (logResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    const entry = logResult.rows[0];
+
+    if (entry.channel !== 'webhook' || !entry.recipient) {
+      return res.status(400).json({ error: 'Only webhook notifications can be retried' });
+    }
+
+    let newStatus = 'sent';
+    let newError: string | null = null;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(entry.recipient, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'PulseBoard-Webhook/1.0' },
+        body: entry.body,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      if (!response.ok) {
+        newStatus = 'failed';
+        newError = `HTTP ${response.status} ${response.statusText}`;
+      }
+    } catch (err: any) {
+      newStatus = 'failed';
+      newError = err.message;
+    }
+
+    // Log the retry attempt
+    const retryResult = await pool.query(`
+      INSERT INTO notification_log (team_id, type, channel, recipient, subject, body, metadata, status, error)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      teamId,
+      entry.type,
+      entry.channel,
+      entry.recipient,
+      entry.subject ? `[Retry] ${entry.subject}` : '[Retry]',
+      entry.body,
+      entry.metadata,
+      newStatus,
+      newError,
+    ]);
+
+    res.json({ success: newStatus === 'sent', entry: retryResult.rows[0] });
+  } catch (error) {
+    console.error('Error retrying notification:', error);
+    res.status(500).json({ error: 'Failed to retry notification' });
+  }
+});
+
 // ─── Notification Log ───
 
-// GET /api/teams/:teamId/notifications — list notification log
+// GET /api/teams/:teamId/notifications — list notification log (paginated)
 router.get('/:teamId/notifications', async (req: Request, res: Response) => {
   try {
     const teamId = await resolveTeamId(req.params.teamId);
     if (!teamId) return res.status(404).json({ error: 'Team not found' });
 
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const result = await pool.query(
-      'SELECT * FROM notification_log WHERE team_id = $1 ORDER BY created_at DESC LIMIT $2',
-      [teamId, limit]
-    );
-    res.json(result.rows);
+    const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+
+    const [result, countResult] = await Promise.all([
+      pool.query(
+        'SELECT * FROM notification_log WHERE team_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+        [teamId, limit, offset]
+      ),
+      pool.query('SELECT COUNT(*) FROM notification_log WHERE team_id = $1', [teamId]),
+    ]);
+
+    res.json({
+      notifications: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      limit,
+      offset,
+    });
   } catch (error) {
     console.error('Error fetching notifications:', error);
     res.status(500).json({ error: 'Failed to fetch notifications' });

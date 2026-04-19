@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useSocketContext } from "./SocketProvider";
+import { useTeam } from "./TeamProvider";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -22,17 +23,11 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const TEAMS = [
-  { slug: "acme-eng", name: "Acme Engineering" },
-  { slug: "acme-platform", name: "Acme Platform" },
-  { slug: "acme-infra", name: "Acme Infrastructure" },
-];
-
 export default function Sidebar() {
   const pathname = usePathname();
   const { status } = useSocketContext();
+  const { teams, teamId, team, setTeamId } = useTeam();
   const [teamOpen, setTeamOpen] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState(TEAMS[0]);
 
   const statusColor =
     status === "connected"
@@ -77,10 +72,10 @@ export default function Sidebar() {
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-5 h-5 rounded bg-accent-purple/20 flex items-center justify-center shrink-0">
                 <span className="text-[9px] font-bold text-accent-purple">
-                  {selectedTeam.name.charAt(0)}
+                  {(team?.name ?? teamId).charAt(0).toUpperCase()}
                 </span>
               </span>
-              <span className="truncate">{selectedTeam.name}</span>
+              <span className="truncate">{team?.name ?? teamId}</span>
             </div>
             <ChevronDown
               className={clsx(
@@ -92,26 +87,26 @@ export default function Sidebar() {
 
           {teamOpen && (
             <div className="absolute top-full left-0 right-0 mt-1 rounded-lg bg-surface border border-border shadow-xl z-50 overflow-hidden">
-              {TEAMS.map((team) => (
+              {teams.map((t) => (
                 <button
-                  key={team.slug}
+                  key={t.slug}
                   onClick={() => {
-                    setSelectedTeam(team);
+                    setTeamId(t.slug);
                     setTeamOpen(false);
                   }}
                   className={clsx(
                     "w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-colors",
-                    team.slug === selectedTeam.slug
+                    t.slug === teamId
                       ? "bg-accent-green/10 text-accent-green"
                       : "text-text-dim hover:text-text-primary hover:bg-surface-2",
                   )}
                 >
                   <span className="w-5 h-5 rounded bg-accent-purple/20 flex items-center justify-center shrink-0">
                     <span className="text-[9px] font-bold text-accent-purple">
-                      {team.name.charAt(0)}
+                      {t.name.charAt(0)}
                     </span>
                   </span>
-                  {team.name}
+                  {t.name}
                 </button>
               ))}
             </div>
@@ -170,7 +165,7 @@ export default function Sidebar() {
           {statusLabel}
         </div>
         <p className="text-[10px] text-text-dim/60 font-mono">
-          {selectedTeam.name}
+          {team?.name ?? teamId}
         </p>
       </div>
     </aside>

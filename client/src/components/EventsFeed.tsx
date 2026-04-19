@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Github, Bug, Wifi, ChevronRight, RefreshCw, ChevronUp } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSocketContext } from './SocketProvider';
+import { useTeamId } from './TeamProvider';
 
 interface EventItem {
   id?: string;
@@ -22,8 +23,6 @@ interface EventsResponse {
   events: EventItem[];
   total: number;
 }
-
-const TEAM_ID = 'acme-eng';
 
 const sourceIcons: Record<string, any> = {
   github: Github,
@@ -56,6 +55,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function EventsFeed({ limit = 20 }: { limit?: number }) {
+  const TEAM_ID = useTeamId();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

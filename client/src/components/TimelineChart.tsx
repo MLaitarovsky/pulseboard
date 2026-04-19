@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useSocketContext } from './SocketProvider';
-
-const TEAM_ID = 'acme-eng';
+import { useTeamId } from './TeamProvider';
 
 interface TimelineEvent {
   id: string;
@@ -63,6 +62,7 @@ const RANGE_HOURS: Record<TimeRange, number> = {
 };
 
 export default function TimelineChart() {
+  const TEAM_ID = useTeamId();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
