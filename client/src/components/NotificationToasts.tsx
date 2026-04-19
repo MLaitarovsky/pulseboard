@@ -98,7 +98,7 @@ export default function NotificationToasts() {
   useEffect(() => {
     if (!lastNotification) return;
 
-    const toast: ToastNotification = {
+    const incoming: ToastNotification = {
       id: lastNotification.id,
       type: lastNotification.type,
       title: lastNotification.title,
@@ -110,14 +110,13 @@ export default function NotificationToasts() {
     };
 
     setToasts((prev) => {
-      const updated = [toast, ...prev].slice(0, MAX_TOASTS);
-      return updated;
+      if (prev.some((t) => t.id === incoming.id)) return prev;
+      return [incoming, ...prev].slice(0, MAX_TOASTS);
     });
 
-    // Auto-dismiss after duration
-    const timer = setTimeout(() => removeToast(toast.id), TOAST_DURATION);
+    const timer = setTimeout(() => removeToast(incoming.id), TOAST_DURATION);
     return () => clearTimeout(timer);
-  }, [lastNotification, removeToast]);
+  }, [lastNotification?.id]); // key on ID so each unique notification gets its own timer
 
   if (toasts.length === 0) return null;
 
@@ -173,6 +172,7 @@ export default function NotificationToasts() {
                       <span className="text-white/15">·</span>
                       <Link
                         href={`/incidents/${toast.incidentId}`}
+                        onClick={() => removeToast(toast.id)}
                         className="text-[10px] font-mono flex items-center gap-1 transition-colors hover:underline"
                         style={{ color: colors.accent }}
                       >
