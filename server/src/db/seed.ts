@@ -19,11 +19,19 @@ export async function seedDatabase(): Promise<void> {
     return;
   }
 
-  // Create a demo team
+  // Create demo teams
   const teamId = uuidv4();
   await pool.query(
     'INSERT INTO teams (id, name, slug) VALUES ($1, $2, $3)',
     [teamId, 'Acme Engineering', 'acme-eng']
+  );
+  await pool.query(
+    'INSERT INTO teams (id, name, slug) VALUES ($1, $2, $3)',
+    [uuidv4(), 'Acme Platform', 'acme-platform']
+  );
+  await pool.query(
+    'INSERT INTO teams (id, name, slug) VALUES ($1, $2, $3)',
+    [uuidv4(), 'Acme Infrastructure', 'acme-infra']
   );
 
   // Seed 3 weeks of metrics (every 15 minutes)
